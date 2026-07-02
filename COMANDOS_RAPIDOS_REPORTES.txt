@@ -1,0 +1,150 @@
+═══════════════════════════════════════════════════════════════
+   📊 COMANDOS RÁPIDOS - SISTEMA DE REPORTES
+═══════════════════════════════════════════════════════════════
+
+📁 RUTA DEL PROYECTO:
+cd "C:\Users\Franco-PC\Documents\UAGRM 2 - 2025\Tecno - Web\CLINICA\clinica_santiago_apostol_v1"
+
+───────────────────────────────────────────────────────────────
+🔧 COMANDOS DE CONFIGURACIÓN (Ejecutar solo una vez)
+───────────────────────────────────────────────────────────────
+
+# Crear enlace simbólico para storage
+php artisan storage:link
+
+# Limpiar cachés
+php artisan config:clear
+php artisan cache:clear
+php artisan view:clear
+
+───────────────────────────────────────────────────────────────
+🚀 INICIAR SISTEMA (Ejecutar siempre)
+───────────────────────────────────────────────────────────────
+
+TERMINAL 1 - SERVIDOR:
+cd "C:\Users\Franco-PC\Documents\UAGRM 2 - 2025\Tecno - Web\CLINICA\clinica_santiago_apostol_v1"
+php artisan serve
+
+TERMINAL 2 - QUEUE WORKER (Para reportes programados):
+cd "C:\Users\Franco-PC\Documents\UAGRM 2 - 2025\Tecno - Web\CLINICA\clinica_santiago_apostol_v1"
+php artisan queue:work
+
+───────────────────────────────────────────────────────────────
+🌐 ACCEDER AL SISTEMA
+───────────────────────────────────────────────────────────────
+
+Página de Reportes:
+http://localhost:8000/reportes/generar
+
+Sistema Principal:
+http://localhost:8000
+
+───────────────────────────────────────────────────────────────
+⏰ COMANDOS DE REPORTES PERIÓDICOS
+───────────────────────────────────────────────────────────────
+
+# Reporte diario (sin email)
+php artisan reportes:periodicos diario
+
+# Reporte diario con email
+php artisan reportes:periodicos diario --email
+
+# Reporte semanal con email
+php artisan reportes:periodicos semanal --email
+
+# Reporte mensual con email
+php artisan reportes:periodicos mensual --email
+
+───────────────────────────────────────────────────────────────
+📝 COMANDOS DE VERIFICACIÓN
+───────────────────────────────────────────────────────────────
+
+# Ver logs en tiempo real
+Get-Content storage\logs\laravel.log -Wait -Tail 30
+
+# Ver trabajos fallidos
+php artisan queue:failed
+
+# Limpiar trabajos fallidos
+php artisan queue:flush
+
+# Ver rutas de reportes
+php artisan route:list --path=reportes
+
+───────────────────────────────────────────────────────────────
+🔄 COMANDOS DE REINICIO (Si algo falla)
+───────────────────────────────────────────────────────────────
+
+# Limpiar todo
+php artisan config:clear
+php artisan cache:clear
+php artisan view:clear
+php artisan route:clear
+
+# Regenerar autoload
+composer dump-autoload
+
+# Reiniciar queue worker
+# Ctrl+C en la terminal del queue worker
+php artisan queue:work
+
+───────────────────────────────────────────────────────────────
+📂 RUTAS DE ARCHIVOS GENERADOS
+───────────────────────────────────────────────────────────────
+
+Reportes generados:
+storage\app\public\reportes\
+
+Acceso web:
+http://localhost:8000/storage/reportes/
+
+───────────────────────────────────────────────────────────────
+✅ FLUJO DE PRUEBA RÁPIDO
+───────────────────────────────────────────────────────────────
+
+1. Ejecutar TERMINAL 1 (servidor)
+2. Ejecutar TERMINAL 2 (queue worker) - OPCIONAL
+3. Ir a: http://localhost:8000/reportes/generar
+4. Seleccionar tipo de reporte
+5. Configurar fechas
+6. Generar PDF o Excel
+7. ✅ Descargar automáticamente
+
+───────────────────────────────────────────────────────────────
+📧 CONFIGURACIÓN DE EMAIL (Opcional - en .env)
+───────────────────────────────────────────────────────────────
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=tu_email@gmail.com
+MAIL_PASSWORD=tu_contraseña_app
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=tu_email@gmail.com
+MAIL_FROM_NAME="Consultorio Medico Yeshua"
+
+───────────────────────────────────────────────────────────────
+🐛 SOLUCIÓN DE PROBLEMAS COMUNES
+───────────────────────────────────────────────────────────────
+
+PROBLEMA: "Queue connection [database] not found"
+SOLUCIÓN: Verificar que la tabla 'trabajos' exista en la BD
+
+PROBLEMA: PDFs en blanco
+SOLUCIÓN: Esperar unos segundos, es normal en la primera generación
+
+PROBLEMA: Error de permisos en storage
+SOLUCIÓN: 
+chmod -R 775 storage (Linux/Mac)
+o dar permisos manualmente en Windows
+
+PROBLEMA: Email no se envía
+SOLUCIÓN: 
+1. Verificar configuración en .env
+2. Queue worker debe estar corriendo
+3. Verificar logs: storage\logs\laravel.log
+
+═══════════════════════════════════════════════════════════════
+   ✨ ¡SISTEMA LISTO PARA USAR!
+═══════════════════════════════════════════════════════════════
+

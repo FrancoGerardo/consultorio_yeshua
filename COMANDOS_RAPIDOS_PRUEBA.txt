@@ -1,0 +1,94 @@
+==========================================================
+COMANDOS RÁPIDOS PARA PROBAR - COPIAR Y PEGAR
+==========================================================
+
+=== PASO 1: CONFIGURAR .env ===
+Abre tu archivo .env y verifica/agrega estas líneas:
+
+CACHE_DRIVER=file
+SESSION_DRIVER=file
+QUEUE_CONNECTION=database
+
+
+=== PASO 2: LIMPIAR CACHE ===
+php artisan config:clear
+php artisan cache:clear
+
+
+=== PASO 3A: SI NO TIENES BD CREADA (Recomendado) ===
+php artisan migrate:fresh
+php artisan db:seed
+
+
+=== PASO 3B: SI YA TIENES BD CREADA ===
+php artisan tinker
+
+Luego DENTRO de tinker, copia y pega línea por línea:
+
+DB::statement('DROP TABLE IF EXISTS cache CASCADE');
+DB::statement('DROP TABLE IF EXISTS cache_locks CASCADE');
+DB::statement('DROP TABLE IF EXISTS job_batches CASCADE');
+DB::statement('DROP TABLE IF EXISTS sessions CASCADE');
+DB::statement('DROP TABLE IF EXISTS personal_access_tokens CASCADE');
+exit
+
+
+=== PASO 4: VERIFICAR QUE FUNCIONAN LOS DRIVERS ===
+php artisan tinker
+
+Dentro de tinker:
+
+config('cache.default')
+config('session.driver')
+config('queue.default')
+exit
+
+
+=== PASO 5: PROBAR CACHE (usa archivos ahora) ===
+php artisan tinker
+
+Dentro de tinker:
+
+Cache::put('test_eliminacion', 'funciona_ok', 60);
+Cache::get('test_eliminacion');
+exit
+
+Debe mostrar: "funciona_ok"
+
+
+=== PASO 6: VERIFICAR TABLAS EN BD ===
+php artisan tinker
+
+Dentro de tinker:
+
+DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename");
+exit
+
+NO deben aparecer:
+- cache
+- cache_locks
+- job_batches
+- sessions
+- personal_access_tokens
+
+
+=== PASO 7: PROBAR LOGIN (sesiones funcionan) ===
+php artisan serve
+
+Abre navegador: http://127.0.0.1:8000
+Haz login con: admin@gmail.com / 123456789
+Debe funcionar normal
+
+
+=== PASO 8: PROBAR QUEUE ===
+php artisan queue:work --tries=1
+
+Debe arrancar sin error de "tabla no encontrada"
+Presiona Ctrl+C para detener
+
+
+==========================================================
+✅ SI TODO FUNCIONA: Estás listo para el siguiente paso
+❌ SI ALGO FALLA: Lee INSTRUCCIONES_ELIMINACION_TABLAS.md
+==========================================================
+
