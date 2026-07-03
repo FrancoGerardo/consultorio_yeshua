@@ -22,3 +22,13 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Notas, guías y comandos de desarrollo (raíz del proyecto)
+/*.md
+!/README.md
+/*.txt
+/temp_log*.txt
+
+# Documentación de pruebas / integraciones en raíz
+/test_*.md
+/ejemplo_*.md
