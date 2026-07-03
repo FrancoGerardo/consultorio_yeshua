@@ -25,6 +25,7 @@
                                 <th>ID</th>
                                 <th>Nombre</th>
                                 <th>Categoría</th>
+                                <th>Tipo Sala</th>
                                 <th>Costo</th>
                                 <th>Duración (min)</th>
                                 <th>Estado</th>
@@ -36,6 +37,7 @@
                                 <td class="text-center">{{ servicio.id }}</td>
                                 <td class="tema-texto font-bold">{{ servicio.nombre }}</td>
                                 <td class="text-center">{{ servicio.categoria }}</td>
+                                <td class="text-center">{{ servicio.tipo_sala_requerido || 'N/A' }}</td>
                                 <td class="text-center">Bs. {{ servicio.costo }}</td>
                                 <td class="text-center">{{ servicio.duracion_minutos || 'N/A' }}</td>
                                 <td class="text-center">
@@ -117,6 +119,14 @@
                         <option value="ENFERMERIA">Enfermería</option>
                     </select>
                     <InputError :message="formularioServicio.errors.categoria" class="mt-2" />
+                </div>
+                <div>
+                    <InputLabel for="servicio-tipo-sala" value="Tipo de sala requerido" />
+                    <select id="servicio-tipo-sala" class="mt-1 block w-full input-tema" v-model="formularioServicio.tipo_sala_requerido">
+                        <option value="">Automático según categoría</option>
+                        <option v-for="tipo in tiposSalaOpciones" :key="tipo" :value="tipo">{{ tipo }}</option>
+                    </select>
+                    <InputError :message="formularioServicio.errors.tipo_sala_requerido" class="mt-2" />
                 </div>
                 <div v-if="formularioServicio.categoria === 'ESPECIALIDAD'" class="md:col-span-2">
                     <InputLabel for="servicio-especialidad" value="Especialidad (solo con médicos) *" />
@@ -209,6 +219,14 @@
                     </select>
                     <InputError :message="formularioServicio.errors.categoria" class="mt-2" />
                 </div>
+                <div>
+                    <InputLabel for="servicio-tipo-sala-edit" value="Tipo de sala requerido" />
+                    <select id="servicio-tipo-sala-edit" class="mt-1 block w-full input-tema" v-model="formularioServicio.tipo_sala_requerido">
+                        <option value="">Automático según categoría</option>
+                        <option v-for="tipo in tiposSalaOpciones" :key="tipo" :value="tipo">{{ tipo }}</option>
+                    </select>
+                    <InputError :message="formularioServicio.errors.tipo_sala_requerido" class="mt-2" />
+                </div>
                 <div v-if="formularioServicio.categoria === 'ESPECIALIDAD'" class="md:col-span-2">
                     <InputLabel for="servicio-especialidad-edit" value="Especialidad (solo con médicos) *" />
                     <select
@@ -289,6 +307,7 @@
                 <p><strong>ID:</strong> {{ servicioMostrado.id }}</p>
                 <p><strong>Nombre:</strong> {{ servicioMostrado.nombre }}</p>
                 <p><strong>Categoría:</strong> {{ servicioMostrado.categoria }}</p>
+                <p><strong>Tipo de sala:</strong> {{ servicioMostrado.tipo_sala_requerido || 'Automático' }}</p>
                 <p><strong>Costo:</strong> Bs. {{ servicioMostrado.costo }}</p>
                 <p><strong>Duración:</strong> {{ servicioMostrado.duracion_minutos || 'N/A' }} minutos</p>
                 <p><strong>Estado:</strong> {{ servicioMostrado.estado ? 'Activo' : 'Inactivo' }}</p>
@@ -317,6 +336,10 @@ import { tienePermiso } from '@/Permisos_Ayuda/permisos.js';
 const props = defineProps({
     servicios: Object,
     contadorVisitas: Number,
+    tiposSala: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const pagina = usePage();
@@ -329,12 +352,14 @@ const especialidadesConMedicos = ref([]);
 const medicosDisponibles = ref([]);
 const medicosFiltrados = ref([]);
 const cargandoEspecialidades = ref(false);
+const tiposSalaOpciones = ref(props.tiposSala || []);
 
 const formularioServicio = useForm({
     id: null,
     nombre: '',
     descripcion: '',
     categoria: '',
+    tipo_sala_requerido: '',
     especialidad_id: '',
     medico_id: '',
     costo: '',
@@ -419,6 +444,7 @@ function abrirModalCrear() {
     formularioServicio.clearErrors();
     formularioServicio.estado = true;
     formularioServicio.categoria = '';
+    formularioServicio.tipo_sala_requerido = '';
     formularioServicio.especialidad_id = '';
     formularioServicio.medico_id = '';
     obtenerEspecialidadesConMedicos();
@@ -443,6 +469,7 @@ function abrirModalEditar(id) {
             formularioServicio.nombre = servicio.nombre;
             formularioServicio.descripcion = servicio.descripcion || '';
             formularioServicio.categoria = servicio.categoria;
+            formularioServicio.tipo_sala_requerido = servicio.tipo_sala_requerido || '';
             formularioServicio.especialidad_id = servicio.especialidad_id || '';
             formularioServicio.medico_id = servicio.meedico_id || servicio.medico_id || '';
             formularioServicio.costo = servicio.costo;

@@ -19,6 +19,10 @@ class PagoController extends Controller
     {
         $usuario = $solicitud->user();
 
+        if ($usuario->hasRole('Medico') && ! $usuario->hasAnyRole(['Administrador', 'Secretaria'])) {
+            abort(403, 'Los médicos no tienen acceso al módulo de pagos.');
+        }
+
         // ✅ Flujo profesional:
         // - Cliente: "Mis Pagos" (solo los suyos)
         // - Secretaria/Admin: "Pagos (Consultorio)" (global con filtros)

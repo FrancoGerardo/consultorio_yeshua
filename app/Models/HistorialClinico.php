@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class HistorialClinico extends Model
 {
@@ -50,6 +51,34 @@ class HistorialClinico extends Model
     public function cliente()
     {
         return $this->belongsTo(Cliente::class, 'cliente_id', 'usuario_id');
+    }
+
+    /**
+     * Garantiza un expediente clínico permanente por paciente (1:1 con cliente).
+     */
+    public static function asegurarParaCliente(string $clienteId): self
+    {
+        return self::firstOrCreate(
+            ['cliente_id' => $clienteId],
+            ['id' => Str::uuid()->toString()]
+        );
+    }
+
+    /**
+     * Crea expedientes vacíos para clientes existentes sin historial (migración suave).
+     */
+    public static function sincronizarHistorialesFaltantes(): int
+    {
+        $creados = 0;
+
+        Cliente::whereDoesntHave('historialClinico')
+            ->pluck('usuario_id')
+            ->each(function (string $clienteId) use (&$creados) {
+                self::asegurarParaCliente($clienteId);
+                $creados++;
+            });
+
+        return $creados;
     }
 }
 

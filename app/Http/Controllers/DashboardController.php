@@ -24,8 +24,10 @@ class DashboardController extends Controller
         // Normalizar el nombre del rol a mayúsculas para comparación
         $rol = strtoupper($rolOriginal);
 
-        // Métricas generales (para todos)
-        $metricas = $this->obtenerMetricasGenerales();
+        // Métricas generales (para todos) o del médico si aplica
+        $metricas = in_array($rol, ['MEDICO', 'MÉDICO'], true)
+            ? $this->obtenerMetricasMedico($usuario)
+            : $this->obtenerMetricasGenerales();
 
         // Datos específicos según el rol
         $datosRol = [];
@@ -76,18 +78,18 @@ class DashboardController extends Controller
                 ->where('estado', 'ATENDIDA')
                 ->count(),
             'citas_pendientes_hoy' => Ficha::whereDate('fecha', $hoy)
-                ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                ->whereIn('estado', Ficha::estadosColaConsultorio())
                 ->count(),
 
             // Ingresos del día
             'ingresos_hoy' => Pago::whereDate('fecha_pago', $hoy)
-                ->where('estado', 'COMPLETADO')
+                ->where('estado', 'PAGADO')
                 ->sum('monto'),
 
             // Ingresos del mes
             'ingresos_mes' => Pago::whereMonth('fecha_pago', $mesActual)
                 ->whereYear('fecha_pago', $anioActual)
-                ->where('estado', 'COMPLETADO')
+                ->where('estado', 'PAGADO')
                 ->sum('monto'),
 
             // Pacientes en espera
@@ -147,12 +149,14 @@ class DashboardController extends Controller
             return [];
         }
 
+        $medico->load('especialidades');
+
         return [
             // Cola de pacientes del médico
             'cola_pacientes' => Ficha::with('cliente.usuario.persona')
                 ->whereDate('fecha', $hoy)
                 ->where('medico_id', $medico->usuario_id)
-                ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                ->enColaConsultorio()
                 ->orderBy('hora')
                 ->get(),
 
@@ -171,10 +175,54 @@ class DashboardController extends Controller
                     ->count(),
                 'pacientes_pendientes' => Ficha::whereDate('fecha', $hoy)
                     ->where('medico_id', $medico->usuario_id)
-                    ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                    ->enEspera()
                     ->count(),
-                'especialidad' => $medico->especialidad->nombre ?? 'N/A',
+                'programadas_hoy' => Ficha::whereDate('fecha', $hoy)
+                    ->where('medico_id', $medico->usuario_id)
+                    ->programadas()
+                    ->count(),
+                'especialidad' => $medico->especialidades->pluck('nombre')->join(', ') ?: 'N/A',
             ],
+        ];
+    }
+
+    private function obtenerMetricasMedico($usuario)
+    {
+        $hoy = Carbon::today();
+        $mesActual = Carbon::now()->month;
+        $anioActual = Carbon::now()->year;
+        $medico = $usuario->medico;
+
+        if (!$medico) {
+            return $this->obtenerMetricasGenerales();
+        }
+
+        $medicoId = $medico->usuario_id;
+        $fichasMedicoHoy = fn () => Ficha::whereDate('fecha', $hoy)->where('medico_id', $medicoId);
+
+        return [
+            'pacientes_atendidos_hoy' => $fichasMedicoHoy()->where('estado', 'ATENDIDA')->count(),
+            'citas_hoy' => $fichasMedicoHoy()->count(),
+            'citas_completadas_hoy' => $fichasMedicoHoy()->where('estado', 'ATENDIDA')->count(),
+            'citas_pendientes_hoy' => $fichasMedicoHoy()->enEspera()->count(),
+            'programadas_hoy' => $fichasMedicoHoy()->programadas()->count(),
+            'ingresos_hoy' => Pago::whereHas('ficha', function ($query) use ($medicoId) {
+                $query->where('medico_id', $medicoId);
+            })
+                ->whereDate('fecha_pago', $hoy)
+                ->where('estado', 'PAGADO')
+                ->sum('monto'),
+            'ingresos_mes' => Pago::whereHas('ficha', function ($query) use ($medicoId) {
+                $query->where('medico_id', $medicoId);
+            })
+                ->whereMonth('fecha_pago', $mesActual)
+                ->whereYear('fecha_pago', $anioActual)
+                ->where('estado', 'PAGADO')
+                ->sum('monto'),
+            'pacientes_en_espera' => $fichasMedicoHoy()->enEspera()->count(),
+            'programadas_hoy' => $fichasMedicoHoy()->programadas()->count(),
+            'medicos_activos' => 1,
+            'total_medicos' => 1,
         ];
     }
 
@@ -183,35 +231,38 @@ class DashboardController extends Controller
         $hoy = Carbon::today();
 
         return [
-            // Todas las fichas del día
             'citas_hoy' => Ficha::with(['cliente.usuario.persona', 'medico.usuario.persona', 'servicio'])
                 ->whereDate('fecha', $hoy)
                 ->orderBy('hora')
                 ->get(),
 
-            // Pacientes en sala de espera
             'pacientes_espera' => Ficha::with('cliente.usuario.persona', 'medico.usuario.persona')
                 ->whereDate('fecha', $hoy)
-                ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                ->enEspera()
+                ->orderBy('fecha_llegada')
+                ->get(),
+
+            'programadas' => Ficha::with(['cliente.usuario.persona', 'medico.usuario.persona', 'servicio'])
+                ->whereDate('fecha', $hoy)
+                ->programadas()
                 ->orderBy('hora')
                 ->get(),
 
-            // Próximas fichas - Limitado a las primeras 10 pendientes
             'proximas_citas' => Ficha::with(['cliente.usuario.persona', 'medico.usuario.persona'])
                 ->whereDate('fecha', $hoy)
-                ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                ->programadas()
                 ->orderBy('hora')
                 ->limit(10)
                 ->get(),
 
-            // Resumen
             'resumen' => [
                 'citas_confirmadas' => Ficha::whereDate('fecha', $hoy)
                     ->where('estado', 'ATENDIDA')
                     ->count(),
                 'citas_pendientes_confirmacion' => Ficha::whereDate('fecha', $hoy)
-                    ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+                    ->programadas()
                     ->count(),
+                'en_espera' => Ficha::whereDate('fecha', $hoy)->enEspera()->count(),
             ],
         ];
     }
@@ -301,7 +352,7 @@ class DashboardController extends Controller
         $finSemana = Carbon::now()->endOfWeek();
 
         $ingresos = Pago::whereBetween('fecha_pago', [$inicioSemana, $finSemana])
-            ->where('estado', 'COMPLETADO')
+            ->where('estado', 'PAGADO')
             ->selectRaw('DATE(fecha_pago) as fecha, SUM(monto) as total')
             ->groupBy('fecha')
             ->orderBy('fecha')

@@ -134,6 +134,10 @@ const props = defineProps({
     costoTotal: Number,
     opciones: Object,
     configuracion: Object,
+    contextoStaff: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const planSeleccionado = ref(null);
@@ -148,7 +152,11 @@ const seleccionarPlan = (plan, monto) => {
 const continuarConPlan = () => {
     if (!planSeleccionado.value) return;
 
-    router.visit(route('cliente.pagos.procesar', props.ficha.id), {
+    const rutaProcesar = props.contextoStaff
+        ? route('fichas.pago.procesar', props.ficha.id)
+        : route('cliente.pagos.procesar', props.ficha.id);
+
+    router.visit(rutaProcesar, {
         method: 'get',
         data: {
             plan: planSeleccionado.value,

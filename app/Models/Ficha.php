@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SalaAsignacionService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -37,7 +38,6 @@ class Ficha extends Model
     {
         return [
             'fecha' => 'date',
-            'hora' => 'datetime',
             'fecha_confirmacion' => 'datetime',
             'fecha_llegada' => 'datetime',
             'fecha_inicio_atencion' => 'datetime',
@@ -85,6 +85,52 @@ class Ficha extends Model
     }
 
     /**
+     * Estados visibles en la cola / agenda del consultorio médico.
+     */
+    public static function estadosColaConsultorio(): array
+    {
+        return [
+            'PAGADA_COMPLETA',
+            'ANTICIPO_PAGADO',
+            'CONFIRMADA',
+            'EN_ESPERA',
+            'EN_ATENCION',
+        ];
+    }
+
+    /**
+     * Citas pagadas/confirmadas que aún no hicieron check-in en recepción.
+     */
+    public static function estadosProgramadas(): array
+    {
+        return [
+            'PAGADA_COMPLETA',
+            'ANTICIPO_PAGADO',
+            'CONFIRMADA',
+        ];
+    }
+
+    public function scopeProgramadas($query)
+    {
+        return $query->whereIn('estado', self::estadosProgramadas());
+    }
+
+    public function puedeMarcarLlegada(): bool
+    {
+        return in_array($this->estado, self::estadosProgramadas(), true);
+    }
+
+    public function puedeIniciarAtencionMedica(): bool
+    {
+        return in_array($this->estado, ['EN_ESPERA', 'EN_ATENCION'], true);
+    }
+
+    public function scopeEnColaConsultorio($query)
+    {
+        return $query->whereIn('estado', self::estadosColaConsultorio());
+    }
+
+    /**
      * Fichas que ocupan un horario (excluye canceladas y no asistió).
      */
     public function scopeOcupanHorario($query)
@@ -128,28 +174,32 @@ class Ficha extends Model
 
     public function iniciarAtencion()
     {
-        $tiempoEspera = $this->fecha_llegada 
-            ? now()->diffInMinutes($this->fecha_llegada) 
-            : null;
-
         $this->update([
             'estado' => 'EN_ATENCION',
             'fecha_inicio_atencion' => now(),
-            'tiempo_espera_minutos' => $tiempoEspera,
+            'tiempo_espera_minutos' => $this->calcularMinutosTranscuridos($this->fecha_llegada),
         ]);
     }
 
     public function finalizarAtencion()
     {
-        $tiempoAtencion = $this->fecha_inicio_atencion 
-            ? now()->diffInMinutes($this->fecha_inicio_atencion) 
-            : null;
-
         $this->update([
             'estado' => 'ATENDIDA',
             'fecha_fin_atencion' => now(),
-            'tiempo_atencion_minutos' => $tiempoAtencion,
+            'tiempo_atencion_minutos' => $this->calcularMinutosTranscuridos($this->fecha_inicio_atencion),
         ]);
+    }
+
+    /**
+     * Minutos enteros transcurridos desde un timestamp hasta ahora (mínimo 0).
+     */
+    private function calcularMinutosTranscuridos(?\Illuminate\Support\Carbon $desde): ?int
+    {
+        if (! $desde) {
+            return null;
+        }
+
+        return max(0, (int) round($desde->diffInMinutes(now(), absolute: true)));
     }
 
     /**
@@ -225,6 +275,11 @@ class Ficha extends Model
     public static function estadosGestionadosPorPago(): array
     {
         return ['PENDIENTE_PAGO', 'ANTICIPO_PAGADO', 'PAGADA_COMPLETA'];
+    }
+
+    public function intentarAsignarSalaAutomaticamente(bool $forzar = false): bool
+    {
+        return app(SalaAsignacionService::class)->asignarSalaAFicha($this, $forzar);
     }
 
     public function actualizarEstadoPorPago(): void

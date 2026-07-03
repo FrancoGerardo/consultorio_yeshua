@@ -4,7 +4,7 @@
         <!-- Resumen del Médico -->
         <div class="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg shadow-md p-6">
             <h3 class="text-xl font-bold mb-4">👨‍⚕️ Mi Resumen del Día</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white rounded-lg p-4">
                     <p class="text-sm text-gray-600">Especialidad</p>
                     <p class="text-2xl font-bold text-blue-600">{{ datos.resumen?.especialidad || 'N/A' }}</p>
@@ -14,8 +14,12 @@
                     <p class="text-3xl font-bold text-green-600">{{ datos.resumen?.pacientes_atendidos_hoy || 0 }}</p>
                 </div>
                 <div class="bg-white rounded-lg p-4">
-                    <p class="text-sm text-gray-600">Pacientes Pendientes</p>
-                    <p class="text-3xl font-bold text-orange-600">{{ datos.resumen?.pacientes_pendientes || 0 }}</p>
+                    <p class="text-sm text-gray-600">En Sala de Espera</p>
+                    <p class="text-3xl font-bold text-yellow-600">{{ datos.resumen?.pacientes_pendientes || 0 }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Por Llegar</p>
+                    <p class="text-3xl font-bold text-blue-600">{{ datos.resumen?.programadas_hoy || 0 }}</p>
                 </div>
             </div>
         </div>
@@ -46,7 +50,7 @@
                     >
                         <div class="flex items-center gap-3">
                             <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                <span class="text-xl font-bold text-blue-600">{{ ficha.numero_ficha }}</span>
+                                <span class="text-sm font-bold text-blue-600">{{ formatearHoraCorta(ficha.hora) }}</span>
                             </div>
                             <div>
                                 <p class="font-bold text-gray-900">
@@ -80,8 +84,11 @@
                         :key="cita.id"
                         class="p-3 border-l-4 rounded"
                         :class="{
-                            'border-green-500 bg-green-50': cita.estado === 'COMPLETADA',
-                            'border-yellow-500 bg-yellow-50': cita.estado === 'PENDIENTE',
+                            'border-green-500 bg-green-50': cita.estado === 'ATENDIDA',
+                            'border-blue-500 bg-blue-50': cita.estado === 'PAGADA_COMPLETA' || cita.estado === 'CONFIRMADA',
+                            'border-orange-500 bg-orange-50': cita.estado === 'ANTICIPO_PAGADO',
+                            'border-yellow-500 bg-yellow-50': cita.estado === 'EN_ESPERA',
+                            'border-red-500 bg-red-50': cita.estado === 'EN_ATENCION',
                             'border-blue-500 bg-blue-50': cita.estado === 'CONFIRMADA',
                         }"
                     >
@@ -102,11 +109,14 @@
                                     class="text-xs px-2 py-1 rounded"
                                     :class="{
                                         'bg-green-200 text-green-800': cita.estado === 'ATENDIDA',
-                                        'bg-blue-200 text-blue-800': cita.estado === 'EN_ATENCION',
+                                        'bg-blue-200 text-blue-800': cita.estado === 'PAGADA_COMPLETA' || cita.estado === 'CONFIRMADA',
+                                        'bg-orange-200 text-orange-800': cita.estado === 'ANTICIPO_PAGADO',
+                                        'bg-blue-200 text-blue-800': cita.estado === 'CONFIRMADA',
+                                        'bg-red-200 text-red-800': cita.estado === 'EN_ATENCION',
                                         'bg-yellow-200 text-yellow-800': cita.estado === 'EN_ESPERA',
                                     }"
                                 >
-                                    {{ cita.estado }}
+                                    {{ etiquetaEstado(cita.estado) }}
                                 </span>
                             </div>
                         </div>
@@ -158,16 +168,27 @@
 </template>
 
 <script setup>
+import { formatearHoraCita } from '@/utils/formatearHora';
+
 defineProps({
     datos: Object,
 });
 
-const formatearHora = (fecha) => {
-    if (!fecha) return 'N/A';
-    return new Date(fecha).toLocaleTimeString('es-BO', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+const formatearHora = formatearHoraCita;
+const formatearHoraCorta = formatearHoraCita;
+
+const etiquetaEstado = (estado) => {
+    const estados = {
+        ATENDIDA: 'Atendida',
+        PAGADA_COMPLETA: 'Pagada',
+        ANTICIPO_PAGADO: 'Anticipo pagado',
+        CONFIRMADA: 'Confirmada',
+        EN_ATENCION: 'En atención',
+        EN_ESPERA: 'En espera',
+        PENDIENTE_PAGO: 'Pendiente pago',
+        CANCELADA: 'Cancelada',
+    };
+    return estados[estado] || estado;
 };
 </script>
 

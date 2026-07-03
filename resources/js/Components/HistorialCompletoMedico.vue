@@ -93,7 +93,7 @@
             <div v-show="tabActivo === 'consulta'">
                 <FormularioConsulta
                     :ficha-id="fichaId"
-                    :paciente="paciente"
+                    :motivo-inicial="paciente.motivo_consulta || ''"
                     @consulta-guardada="handleConsultaGuardada"
                 />
             </div>
@@ -101,8 +101,7 @@
             <div v-show="tabActivo === 'historial'">
                 <FormularioHistorial
                     :historial="historialClinico"
-                    :cliente-id="paciente.cliente_id"
-                    @actualizado="recargarHistorial"
+                    @guardar="guardarHistorial"
                 />
             </div>
 
@@ -163,6 +162,27 @@ const recargarHistorial = async () => {
 
 const handleConsultaGuardada = () => {
     emit('consulta-guardada');
+};
+
+const guardarHistorial = async (datos) => {
+    if (!paciente.value?.cliente_id) {
+        return;
+    }
+
+    try {
+        const response = await axios.put(
+            route('consultorio.actualizar-historial', paciente.value.cliente_id),
+            datos
+        );
+
+        if (response.data.success) {
+            await recargarHistorial();
+            alert('Historial clínico actualizado correctamente.');
+        }
+    } catch (error) {
+        console.error('Error al actualizar historial:', error);
+        alert(error.response?.data?.message || 'Error al actualizar el historial clínico');
+    }
 };
 
 const calcularEdad = (fechaNacimiento) => {

@@ -18,10 +18,19 @@ class SeguimientoController extends Controller
      */
     public function paginaPrincipalSeguimiento()
     {
-        $this->authorize('gestionar-seguimientos');
+        $usuario = auth()->user();
 
-        $seguimientos = Seguimiento::with('ficha.cliente.usuario.persona')
-            ->paginate(10);
+        if (!$usuario->can('gestionar-seguimientos') && !$usuario->can('ver-seguimientos')) {
+            abort(403);
+        }
+
+        $query = Seguimiento::with('ficha.cliente.usuario.persona');
+
+        if (!$usuario->can('gestionar-seguimientos') && $usuario->medico) {
+            $query->where('medico_id', $usuario->medico->usuario_id);
+        }
+
+        $seguimientos = $query->orderByDesc('fecha')->paginate(10);
         $contadorVisitas = DB::table('visitas_paginas')
             ->where('ruta', 'seguimientos')
             ->count();

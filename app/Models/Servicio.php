@@ -20,6 +20,7 @@ class Servicio extends Model
         'nombre',
         'descripcion',
         'categoria',
+        'tipo_sala_requerido',
         'especialidad_id',
         'meedico_id',
         'costo',

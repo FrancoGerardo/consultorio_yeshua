@@ -8,6 +8,7 @@ use App\Models\Pago;
 use App\Models\Cliente;
 use App\Models\ConfiguracionPago;
 use App\Services\PagoFacilService;
+use App\Services\SalaAsignacionService;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
@@ -17,8 +18,10 @@ class PagoClienteController extends Controller
 {
     protected $pagoFacilService;
 
-    public function __construct(PagoFacilService $pagoFacilService)
-    {
+    public function __construct(
+        PagoFacilService $pagoFacilService,
+        protected SalaAsignacionService $salaAsignacionService
+    ) {
         $this->pagoFacilService = $pagoFacilService;
     }
 
@@ -30,23 +33,25 @@ class PagoClienteController extends Controller
         $ficha = Ficha::with(['servicio', 'medico.usuario.persona', 'cliente.usuario.persona'])
             ->findOrFail($fichaId);
 
-        // Verificar que la ficha pertenece al usuario autenticado
-        if ($ficha->cliente_id !== auth()->id()) {
-            return redirect()->route('cliente.fichas.index')
-                ->with('error', 'No tienes permiso para ver esta ficha.');
-        }
+        // Verificar acceso (cliente dueño o staff con gestionar-fichas)
+        $this->autorizarAccesoPagoFicha($ficha);
 
         if ($ficha->estado === 'CANCELADA') {
-            return redirect()->route('cliente.fichas.index')
+            return redirect()->route($this->rutaListadoFichas())
                 ->with('error', 'Esta ficha fue cancelada.');
+        }
+
+        if ($ficha->estado === 'PENDIENTE' && $ficha->calcularTotalPagado() <= 0) {
+            $ficha->update(['estado' => 'PENDIENTE_PAGO']);
+            $ficha->refresh();
         }
 
         if ($ficha->estado !== 'PENDIENTE_PAGO') {
             if ($ficha->estado === 'ANTICIPO_PAGADO' && $ficha->calcularSaldoPendiente() > 0) {
-                return redirect()->route('cliente.pagos.procesar', $fichaId);
+                return redirect()->route($this->nombreRutaProcesarPago(), $fichaId);
             }
 
-            return redirect()->route('cliente.fichas.index')
+            return redirect()->route($this->rutaListadoFichas())
                 ->with('error', 'Esta ficha no requiere selección de plan de pago.');
         }
 
@@ -92,6 +97,7 @@ class PagoClienteController extends Controller
             'costoTotal' => (float) $costoTotal,
             'opciones' => $opcionesPago,
             'configuracion' => $configuracion,
+            'contextoStaff' => $this->esStaffGestionandoFichas(),
         ]);
     }
 
@@ -103,11 +109,8 @@ class PagoClienteController extends Controller
         $ficha = Ficha::with(['servicio', 'medico.usuario.persona', 'cliente.usuario.persona', 'pagos'])
             ->findOrFail($fichaId);
 
-        // Verificar que la ficha pertenece al usuario autenticado
-        if ($ficha->cliente_id !== auth()->id()) {
-            return redirect()->route('cliente.fichas.index')
-                ->with('error', 'No tienes permiso para ver esta ficha.');
-        }
+        // Verificar acceso (cliente dueño o staff con gestionar-fichas)
+        $this->autorizarAccesoPagoFicha($ficha);
 
         // Calcular información de pago
         $costoTotal = (float) ($ficha->servicio->costo ?? 0);
@@ -135,6 +138,7 @@ class PagoClienteController extends Controller
             'porcentajePagado' => (float) $porcentajePagado,
             'tipoPagoRequerido' => $tipoPagoRequerido,
             'pagoPendiente' => $pagoPendiente,
+            'contextoStaff' => $this->esStaffGestionandoFichas(),
         ]);
     }
 
@@ -151,10 +155,7 @@ class PagoClienteController extends Controller
 
         $ficha = Ficha::with(['servicio', 'cliente.usuario.persona'])->findOrFail($request->ficha_id);
 
-        // Verificar que la ficha pertenece al usuario autenticado
-        if ($ficha->cliente_id !== auth()->id()) {
-            return redirect()->back()->withErrors(['error' => 'No tienes permiso para esta ficha.']);
-        }
+        $this->autorizarAccesoPagoFicha($ficha);
 
         $saldoPendiente = $ficha->calcularSaldoPendiente();
 
@@ -268,7 +269,7 @@ class PagoClienteController extends Controller
             session()->flash('qr_data', $qrDataParaFlash);
 
             // Redirigir a la página de procesar pago
-            return redirect()->route('cliente.pagos.procesar', $ficha->id);
+            return redirect()->route($this->nombreRutaProcesarPago(), $ficha->id);
 
         } catch (\Exception $e) {
             Log::error('❌ [PagoFácil] Error al generar QR', [
@@ -293,10 +294,7 @@ class PagoClienteController extends Controller
 
         $ficha = Ficha::with(['servicio', 'cliente.usuario.persona'])->findOrFail($request->ficha_id);
 
-        // Verificar que la ficha pertenece al usuario autenticado
-        if ($ficha->cliente_id !== auth()->id()) {
-            return redirect()->back()->withErrors(['error' => 'No tienes permiso para esta ficha.']);
-        }
+        $this->autorizarAccesoPagoFicha($ficha);
 
         $saldoPendiente = $ficha->calcularSaldoPendiente();
 
@@ -332,7 +330,7 @@ class PagoClienteController extends Controller
 
             // Actualizar estado de la ficha
             $ficha->refresh();
-            $ficha->actualizarEstadoPorPago();
+            $this->actualizarFichaTrasPago($ficha);
 
             Log::info('✅ [Pago Efectivo] Ficha actualizada', [
                 'ficha_id' => $ficha->id,
@@ -340,8 +338,7 @@ class PagoClienteController extends Controller
                 'porcentaje_pagado' => $ficha->calcularPorcentajePagado(),
             ]);
 
-            return redirect()->route('cliente.fichas.index')
-                ->with('success', 'Pago en efectivo registrado exitosamente.');
+            return $this->redirectTrasPagoExitoso('Pago en efectivo registrado exitosamente.');
 
         } catch (\Exception $e) {
             Log::error('❌ [Pago Efectivo] Error al registrar pago', [
@@ -423,7 +420,7 @@ class PagoClienteController extends Controller
             // Actualizar estado de la ficha
             if ($pago->estado === 'PAGADO') {
                 $ficha->refresh();
-                $ficha->actualizarEstadoPorPago();
+                $this->actualizarFichaTrasPago($ficha);
             }
 
             return redirect()->route('cliente.fichas.index')
@@ -575,7 +572,7 @@ class PagoClienteController extends Controller
             // Actualizar estado de la ficha según el pago realizado
             if ($pago->ficha) {
                 $pago->ficha->refresh();
-                $pago->ficha->actualizarEstadoPorPago();
+                $this->actualizarFichaTrasPago($pago->ficha);
 
                 Log::info('✅ [PagoFácil] Ficha actualizada', [
                     'ficha_id' => $pago->ficha_id,
@@ -612,10 +609,8 @@ class PagoClienteController extends Controller
         try {
             $pago = Pago::with(['ficha.servicio', 'ficha.medico.usuario.persona'])->findOrFail($id);
 
-            // Verificar que el pago pertenece al usuario autenticado
-            if ($pago->ficha && $pago->ficha->cliente_id !== auth()->id()) {
-                return response()->json(['error' => 'No tienes permiso'], 403);
-            }
+            // Verificar acceso al pago
+            $this->autorizarAccesoPago($pago);
 
             // ✅ Consultar PagoFácil con timeout corto y actualizar BD con lo que venga (sin provocar 500)
             // Si el proveedor está lento/falla, devolvemos el estado actual de la BD.
@@ -660,7 +655,7 @@ class PagoClienteController extends Controller
 
                         if ($pago->ficha) {
                             $pago->ficha->refresh();
-                            $pago->ficha->actualizarEstadoPorPago();
+                            $this->actualizarFichaTrasPago($pago->ficha);
                         }
 
                         Log::info('✅ [PagoFácil] Pago actualizado desde /estado', [
@@ -741,10 +736,7 @@ class PagoClienteController extends Controller
             }
         }
 
-        // Verificar que el pago pertenece al usuario autenticado
-        if ($pago->ficha && $pago->ficha->cliente_id !== auth()->id()) {
-            return response()->json(['error' => 'No tienes permiso'], 403);
-        }
+        $this->autorizarAccesoPago($pago);
 
         // REFRESCAR el modelo para obtener los datos más recientes de la BD
         // Esto es importante porque el callback puede haber actualizado el pago
@@ -915,7 +907,7 @@ class PagoClienteController extends Controller
                 // ✅ Actualizar ficha
                 if ($pago->ficha) {
                     $pago->ficha->refresh();
-                    $pago->ficha->actualizarEstadoPorPago();
+                    $this->actualizarFichaTrasPago($pago->ficha);
 
                     Log::info('✅ [PagoFácil] Ficha actualizada', [
                         'ficha_id' => $pago->ficha_id,
@@ -980,5 +972,81 @@ class PagoClienteController extends Controller
                 'message' => 'Error al consultar estado: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function actualizarFichaTrasPago(Ficha $ficha): void
+    {
+        $ficha->actualizarEstadoPorPago();
+        $ficha->intentarAsignarSalaAutomaticamente();
+    }
+
+    private function esStaffGestionandoFichas(): bool
+    {
+        $usuario = auth()->user();
+
+        return $usuario && $usuario->can('gestionar-fichas') && ! $usuario->hasRole('Cliente');
+    }
+
+    private function autorizarAccesoPagoFicha(Ficha $ficha): void
+    {
+        $usuario = auth()->user();
+
+        if ($ficha->cliente_id === $usuario->id) {
+            return;
+        }
+
+        if ($usuario->can('gestionar-fichas')) {
+            return;
+        }
+
+        abort(403, 'No tiene permiso para gestionar el pago de esta ficha.');
+    }
+
+    private function autorizarAccesoPago(Pago $pago): void
+    {
+        if (! $pago->ficha) {
+            return;
+        }
+
+        $this->autorizarAccesoPagoFicha($pago->ficha);
+    }
+
+    private function rutaListadoFichas(): string
+    {
+        return $this->esStaffGestionandoFichas() ? 'fichas.index' : 'cliente.fichas.index';
+    }
+
+    private function nombreRutaProcesarPago(): string
+    {
+        return $this->esStaffGestionandoFichas()
+            ? 'fichas.pago.procesar'
+            : 'cliente.pagos.procesar';
+    }
+
+    private function nombreRutaGenerarQr(): string
+    {
+        return $this->esStaffGestionandoFichas()
+            ? 'fichas.pago.generar-qr'
+            : 'cliente.pagos.generar-qr';
+    }
+
+    private function nombreRutaPagoEfectivo(): string
+    {
+        return $this->esStaffGestionandoFichas()
+            ? 'fichas.pago.efectivo'
+            : 'cliente.pagos.efectivo';
+    }
+
+    private function nombreRutaEstadoPago(): string
+    {
+        return $this->esStaffGestionandoFichas()
+            ? 'fichas.pago.estado-por-id'
+            : 'cliente.pagos.estado-por-id';
+    }
+
+    private function redirectTrasPagoExitoso(string $mensaje)
+    {
+        return redirect()->route($this->rutaListadoFichas())
+            ->with('success', $mensaje);
     }
 }

@@ -81,9 +81,14 @@ class HandleInertiaRequests extends Middleware
                             }
 
                             $itemsHijos = $item->itemsHijos->filter(function ($hijo) use ($usuario) {
+                                if ($hijo->nombre === 'Mis Pagos' && ! $usuario->hasRole('Cliente')) {
+                                    return false;
+                                }
+
                                 if ($hijo->permiso_requerido) {
                                     return $usuario->hasAnyPermission([$hijo->permiso_requerido]);
                                 }
+
                                 return true;
                             });
 
@@ -120,6 +125,71 @@ class HandleInertiaRequests extends Middleware
                         })->values();
 
                     \Illuminate\Support\Facades\Log::info('🔍 [Menu] Items filtrados finales: ' . $itemsMenu->count());
+
+                    // Consultorio visible para médicos aunque no esté en items_menu
+                    if ($usuario->hasRole('Medico') && $usuario->can('gestionar-seguimientos')) {
+                        $tieneConsultorio = $itemsMenu->contains(function ($item) {
+                            return ($item['ruta'] ?? '') === 'consultorio.cola';
+                        });
+
+                        if (!$tieneConsultorio) {
+                            $itemsMenu->prepend([
+                                'id' => 'consultorio-dinamico',
+                                'nombre' => 'Consultorio',
+                                'ruta' => 'consultorio.cola',
+                                'icono' => 'heroicon-o-heart',
+                                'orden' => 2,
+                                'items_hijos' => [],
+                            ]);
+                        }
+                    }
+
+                    // Recepción (check-in) para secretaría
+                    if ($usuario->can('gestionar-fichas')) {
+                        $tieneRecepcion = $itemsMenu->contains(function ($item) {
+                            return ($item['ruta'] ?? '') === 'recepcion.index';
+                        });
+
+                        if (!$tieneRecepcion) {
+                            $itemsMenu->prepend([
+                                'id' => 'recepcion-dinamico',
+                                'nombre' => 'Recepción',
+                                'ruta' => 'recepcion.index',
+                                'icono' => 'heroicon-o-clipboard-document-check',
+                                'orden' => 1,
+                                'items_hijos' => [],
+                            ]);
+                        }
+                    }
+
+                    // Secretaría: Pagos como enlace directo (vista consultorio), sin submenú "Mis Pagos"
+                    if ($usuario->hasRole('Secretaria') && ! $usuario->hasRole('Administrador')) {
+                        $itemsMenu = $itemsMenu->map(function ($item) {
+                            if (($item['nombre'] ?? '') !== 'Pagos') {
+                                return $item;
+                            }
+
+                            return array_merge($item, [
+                                'ruta' => 'pagos.index',
+                                'items_hijos' => [],
+                            ]);
+                        })->values();
+                    }
+
+                    // Médico: sin acceso a módulo de pagos (solo consultorio / clínica)
+                    if ($usuario->hasRole('Medico') && ! $usuario->hasAnyRole(['Administrador', 'Secretaria'])) {
+                        $itemsMenu = $itemsMenu->filter(function ($item) {
+                            if (($item['nombre'] ?? '') === 'Pagos') {
+                                return false;
+                            }
+
+                            if (in_array($item['ruta'] ?? '', ['pagos.index', 'metodos-pago.index', 'planes-pago.index'], true)) {
+                                return false;
+                            }
+
+                            return true;
+                        })->values();
+                    }
                 }
             } catch (\Exception $e) {
                 // Si hay error, dejar menú vacío

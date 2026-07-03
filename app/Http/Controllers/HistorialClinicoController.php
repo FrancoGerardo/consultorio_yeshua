@@ -13,12 +13,25 @@ use Illuminate\Support\Facades\DB;
 
 class HistorialClinicoController extends Controller
 {
+    private function autorizarHistoriales(string ...$permisos): void
+    {
+        $usuario = auth()->user();
+        foreach ($permisos as $permiso) {
+            if ($usuario->can($permiso)) {
+                return;
+            }
+        }
+        abort(403);
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function paginaPrincipalHistorialClinico(Request $request)
     {
-        $this->authorize('gestionar-historiales-clinicos');
+        $this->autorizarHistoriales('ver-historiales-clinicos', 'gestionar-historiales-clinicos');
+
+        HistorialClinico::sincronizarHistorialesFaltantes();
 
         // Query base con relaciones
         $query = HistorialClinico::with([

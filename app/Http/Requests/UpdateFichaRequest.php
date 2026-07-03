@@ -20,7 +20,6 @@ class UpdateFichaRequest extends FormRequest
             'sala_id' => 'nullable|string|exists:salas,id',
             'fecha' => 'required|date',
             'hora' => 'required|date_format:H:i',
-            'estado' => 'required|in:PENDIENTE,CONFIRMADA,ATENDIDA,CANCELADA',
             'motivo_consulta' => 'nullable|string',
         ];
     }
@@ -39,8 +38,6 @@ class UpdateFichaRequest extends FormRequest
             'fecha.date' => 'La fecha debe ser válida.',
             'hora.required' => 'La hora es obligatoria.',
             'hora.date_format' => 'La hora debe tener el formato HH:mm.',
-            'estado.required' => 'El estado es obligatorio.',
-            'estado.in' => 'El estado seleccionado no es válido.',
         ];
     }
 }

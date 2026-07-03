@@ -39,13 +39,21 @@
                                 <td class="text-center">{{ ficha.servicio?.nombre || 'N/A' }}</td>
                                 <td class="text-center">{{ ficha.medico?.usuario?.persona?.nombre_completo || 'N/A' }}</td>
                                 <td class="text-center">{{ ficha.fecha }}</td>
-                                <td class="text-center">{{ ficha.hora }}</td>
+                                <td class="text-center">{{ formatearHoraCita(ficha.hora) }}</td>
                                 <td class="text-center">
                                     <span :class="getEstadoClass(ficha.estado)">
-                                        {{ ficha.estado }}
+                                        {{ etiquetaEstado(ficha.estado) }}
                                     </span>
                                 </td>
                                 <td class="text-center">
+                                    <button
+                                        v-if="tienePermiso('gestionar-fichas') && ['PENDIENTE_PAGO', 'PENDIENTE'].includes(ficha.estado)"
+                                        @click="irAPago(ficha.id)"
+                                        class="btn-tema-secundario mr-2"
+                                        title="Registrar pago (QR o efectivo)"
+                                    >
+                                        💳
+                                    </button>
                                     <button
                                         v-if="tienePermiso('mostrar-fichas')"
                                         @click="abrirModalMostrar(ficha.id)"
@@ -234,14 +242,14 @@
                     <InputError :message="formularioFicha.errors.medico_id" class="mt-2" />
                 </div>
 
-                <div v-if="categoriaSeleccionada !== 'ESPECIALIDAD'">
+                <div>
                     <InputLabel for="ficha-sala" value="Sala" />
                     <select
                         id="ficha-sala"
                         class="mt-1 block w-full input-tema"
                         v-model="formularioFicha.sala_id"
                     >
-                        <option value="">Sin sala</option>
+                        <option value="">Sin sala (asignar automáticamente)</option>
                         <option
                             v-for="sala in salasFiltradas"
                             :key="sala.id"
@@ -251,7 +259,7 @@
                         </option>
                     </select>
                     <p v-if="salasFiltradas.length === 0" class="text-xs tema-texto-secundario mt-1">
-                        No hay salas disponibles para esta categoría.
+                        No hay salas compatibles disponibles. Se intentará asignar una automáticamente al guardar.
                     </p>
                     <InputError :message="formularioFicha.errors.sala_id" class="mt-2" />
                 </div>
@@ -290,15 +298,8 @@
                     </template>
                     <InputError :message="formularioFicha.errors.hora" class="mt-2" />
                 </div>
-                <div>
-                    <InputLabel for="ficha-estado" value="Estado" />
-                    <select id="ficha-estado" class="mt-1 block w-full input-tema" v-model="formularioFicha.estado">
-                        <option value="PENDIENTE">Pendiente</option>
-                        <option value="CONFIRMADA">Confirmada</option>
-                        <option value="ATENDIDA">Atendida</option>
-                        <option value="CANCELADA">Cancelada</option>
-                    </select>
-                    <InputError :message="formularioFicha.errors.estado" class="mt-2" />
+                <div class="md:col-span-2 rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-900">
+                    Tras guardar la cita se abrirá el paso de <strong>pago</strong> (efectivo o QR). El estado se actualizará automáticamente según el pago y el flujo clínico.
                 </div>
                 <div class="md:col-span-2">
                     <InputLabel for="ficha-motivo" value="Motivo de Consulta" />
@@ -410,18 +411,21 @@
                     <InputError :message="formularioFicha.errors.medico_id" class="mt-2" />
                 </div>
 
-                <div v-if="categoriaSeleccionada !== 'ESPECIALIDAD'">
+                <div>
                     <InputLabel for="ficha-sala-edit" value="Sala" />
                     <select
                         id="ficha-sala-edit"
                         class="mt-1 block w-full input-tema"
                         v-model="formularioFicha.sala_id"
                     >
-                        <option value="">Sin sala</option>
+                        <option value="">Sin sala (asignar automáticamente)</option>
                         <option v-for="sala in salasFiltradas" :key="sala.id" :value="sala.id">
                             {{ sala.numero }} - {{ sala.categoria }}
                         </option>
                     </select>
+                    <p v-if="salasFiltradas.length === 0" class="text-xs tema-texto-secundario mt-1">
+                        No hay salas compatibles disponibles. Se intentará asignar una automáticamente al guardar.
+                    </p>
                     <InputError :message="formularioFicha.errors.sala_id" class="mt-2" />
                 </div>
                 <div>
@@ -460,14 +464,15 @@
                     <InputError :message="formularioFicha.errors.hora" class="mt-2" />
                 </div>
                 <div>
-                    <InputLabel for="ficha-estado-edit" value="Estado *" />
-                    <select id="ficha-estado-edit" class="mt-1 block w-full input-tema" v-model="formularioFicha.estado">
-                        <option value="PENDIENTE">Pendiente</option>
-                        <option value="CONFIRMADA">Confirmada</option>
-                        <option value="ATENDIDA">Atendida</option>
-                        <option value="CANCELADA">Cancelada</option>
-                    </select>
-                    <InputError :message="formularioFicha.errors.estado" class="mt-2" />
+                    <InputLabel value="Estado actual" />
+                    <div class="mt-1 w-full input-tema bg-gray-100 px-3 py-2 rounded">
+                        <span :class="getEstadoClass(formularioFicha.estado_actual)">
+                            {{ etiquetaEstado(formularioFicha.estado_actual) }}
+                        </span>
+                    </div>
+                    <p class="text-xs tema-texto-secundario mt-1">
+                        El estado se gestiona por pagos, recepción y consultorio.
+                    </p>
                 </div>
                 <div class="md:col-span-2">
                     <InputLabel for="ficha-motivo-edit" value="Motivo de Consulta" />
@@ -493,7 +498,7 @@
                 <p><strong>Sala:</strong> {{ fichaMostrada.sala?.numero || 'Sin sala' }}</p>
                 <p><strong>Fecha:</strong> {{ fichaMostrada.fecha }}</p>
                 <p><strong>Hora:</strong> {{ fichaMostrada.hora }}</p>
-                <p><strong>Estado:</strong> {{ fichaMostrada.estado }}</p>
+                <p><strong>Estado:</strong> {{ etiquetaEstado(fichaMostrada.estado) }}</p>
                 <p><strong>Motivo:</strong> {{ fichaMostrada.motivo_consulta || 'Sin motivo' }}</p>
             </div>
         </template>
@@ -542,6 +547,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import { tienePermiso } from '@/Permisos_Ayuda/permisos.js';
+import { formatearHoraCita } from '@/utils/formatearHora';
 
 const props = defineProps({
     fichas: Object,
@@ -561,6 +567,8 @@ const clientesDisponibles = ref([]);
 const serviciosDisponibles = ref([]);
 const medicosDisponibles = ref([]);
 const salasDisponibles = ref([]);
+const mapaCategoriaSala = ref({});
+const tiposSala = ref([]);
 const categoriasServicio = [
     { valor: 'INTERNACION', etiqueta: 'Internación' },
     { valor: 'ESPECIALIDAD', etiqueta: 'Especialidad' },
@@ -586,18 +594,44 @@ const formularioFicha = useForm({
     sala_id: '',
     fecha: '',
     hora: '',
-    estado: 'PENDIENTE',
+    estado_actual: '',
     motivo_consulta: '',
 });
 
+function etiquetaEstado(estado) {
+    const map = {
+        PENDIENTE_PAGO: 'Pendiente de pago',
+        ANTICIPO_PAGADO: 'Anticipo pagado',
+        PAGADA_COMPLETA: 'Pagada — Programada',
+        EN_ESPERA: 'En sala de espera',
+        EN_ATENCION: 'En atención',
+        ATENDIDA: 'Atendida',
+        CANCELADA: 'Cancelada',
+        NO_ASISTIO: 'No asistió',
+        PENDIENTE: 'Pendiente (legacy)',
+        CONFIRMADA: 'Confirmada (legacy)',
+    };
+    return map[estado] || estado;
+}
+
 function getEstadoClass(estado) {
     const clases = {
-        'PENDIENTE': 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs',
-        'CONFIRMADA': 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs',
-        'ATENDIDA': 'bg-green-100 text-green-800 px-2 py-1 rounded text-xs',
-        'CANCELADA': 'bg-red-100 text-red-800 px-2 py-1 rounded text-xs',
+        PENDIENTE_PAGO: 'bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs',
+        ANTICIPO_PAGADO: 'bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs',
+        PAGADA_COMPLETA: 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs',
+        CONFIRMADA: 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs',
+        EN_ESPERA: 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs',
+        EN_ATENCION: 'bg-red-100 text-red-800 px-2 py-1 rounded text-xs',
+        ATENDIDA: 'bg-green-100 text-green-800 px-2 py-1 rounded text-xs',
+        CANCELADA: 'bg-red-100 text-red-800 px-2 py-1 rounded text-xs',
+        NO_ASISTIO: 'bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs',
+        PENDIENTE: 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs',
     };
-    return clases[estado] || 'px-2 py-1 rounded text-xs';
+    return clases[estado] || 'px-2 py-1 rounded text-xs bg-gray-100 text-gray-800';
+}
+
+function irAPago(fichaId) {
+    router.visit(route('fichas.pago.plan', fichaId));
 }
 
 function formatearMoneda(valor) {
@@ -657,7 +691,7 @@ function aplicarCambioCategoria() {
     if (categoriaSeleccionada.value === 'ESPECIALIDAD') {
         construirEspecialidadesConProfesionales();
         medicosFiltrados.value = [];
-        salasFiltradas.value = [];
+        actualizarSalasSegunCategoria();
     } else if (categoriaSeleccionada.value) {
         serviciosFiltrados.value = serviciosDisponibles.value.filter(
             (servicio) => servicio.categoria === categoriaSeleccionada.value,
@@ -693,6 +727,7 @@ function sincronizarServicioDesdeEspecialidad() {
         ? especialidad.medicos
         : medicosDisponibles.value;
 
+    actualizarSalasSegunCategoria();
     cargarHorariosDisponibles();
 }
 
@@ -719,21 +754,42 @@ function actualizarMedicosSegunServicio() {
     cargarHorariosDisponibles();
 }
 
-function actualizarSalasSegunCategoria() {
-    if (categoriaSeleccionada.value === 'ESPECIALIDAD') {
-        salasFiltradas.value = [];
-        formularioFicha.sala_id = '';
-        return;
+function obtenerTiposSalaParaSeleccion() {
+    if (formularioFicha.servicio_id) {
+        const servicio = serviciosDisponibles.value.find(
+            (item) => item.id === formularioFicha.servicio_id,
+        );
+        if (servicio?.tipo_sala_requerido) {
+            return [servicio.tipo_sala_requerido];
+        }
+        if (servicio?.categoria && mapaCategoriaSala.value[servicio.categoria]) {
+            return mapaCategoriaSala.value[servicio.categoria];
+        }
     }
 
-    if (!categoriaSeleccionada.value) {
-        salasFiltradas.value = salasDisponibles.value;
-        return;
+    if (categoriaSeleccionada.value && mapaCategoriaSala.value[categoriaSeleccionada.value]) {
+        return mapaCategoriaSala.value[categoriaSeleccionada.value];
     }
+
+    return tiposSala.value.length ? tiposSala.value : salasDisponibles.value.map((s) => s.categoria);
+}
+
+function actualizarSalasSegunCategoria() {
+    const tiposPermitidos = obtenerTiposSalaParaSeleccion().map((tipo) => tipo?.toUpperCase());
 
     salasFiltradas.value = salasDisponibles.value.filter(
-        (sala) => sala.categoria?.toUpperCase() === categoriaSeleccionada.value,
+        (sala) => tiposPermitidos.includes(sala.categoria?.toUpperCase()),
     );
+
+    if (
+        formularioFicha.sala_id &&
+        !salasFiltradas.value.some((sala) => sala.id === formularioFicha.sala_id)
+    ) {
+        const salaActual = salasDisponibles.value.find((sala) => sala.id === formularioFicha.sala_id);
+        if (salaActual) {
+            salasFiltradas.value = [salaActual, ...salasFiltradas.value];
+        }
+    }
 }
 
 function limpiarHorariosDisponibles() {
@@ -779,6 +835,8 @@ function asignarCatalogos(data) {
     }));
     medicosDisponibles.value = data.medicos || [];
     salasDisponibles.value = data.salas || [];
+    mapaCategoriaSala.value = data.mapa_categoria_sala || {};
+    tiposSala.value = data.tipos_sala || [];
 }
 
 function prepararFormularioParaNuevoRegistro() {
@@ -797,7 +855,6 @@ function prepararFormularioParaNuevoRegistro() {
 function abrirModalCrear() {
     formularioFicha.reset();
     formularioFicha.clearErrors();
-    formularioFicha.estado = 'PENDIENTE';
     axios.get(route('fichas.create'))
         .then((response) => {
             asignarCatalogos(response.data);
@@ -824,8 +881,8 @@ function abrirModalEditar(id) {
             formularioFicha.medico_id = ficha.medico_id;
             formularioFicha.sala_id = ficha.sala_id || '';
             formularioFicha.fecha = ficha.fecha;
-            formularioFicha.hora = ficha.hora;
-            formularioFicha.estado = ficha.estado;
+            formularioFicha.hora = ficha.hora?.substring?.(0, 5) || ficha.hora;
+            formularioFicha.estado_actual = ficha.estado;
             formularioFicha.motivo_consulta = ficha.motivo_consulta || '';
             asignarCatalogos(catalogos);
 
@@ -842,7 +899,7 @@ function abrirModalEditar(id) {
                     especialidadSeleccionada.value = ficha.servicio.especialidad_id;
                 }
                 sincronizarServicioDesdeEspecialidad();
-                salasFiltradas.value = [];
+                actualizarSalasSegunCategoria();
             } else if (categoriaSeleccionada.value) {
                 serviciosFiltrados.value = serviciosDisponibles.value.filter(
                     (servicio) => servicio.categoria === categoriaSeleccionada.value,
@@ -862,7 +919,6 @@ function abrirModalEditar(id) {
 function guardarFicha() {
     formularioFicha.post(route('fichas.store'), {
         preserveScroll: true,
-        onSuccess: cerrarModalCrear,
     });
 }
 

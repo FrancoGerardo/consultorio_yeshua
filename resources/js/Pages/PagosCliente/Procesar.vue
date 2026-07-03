@@ -12,6 +12,10 @@ const props = defineProps({
     porcentajePagado: Number,
     tipoPagoRequerido: String,
     pagoPendiente: Object,
+    contextoStaff: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const pagina = usePage();
@@ -26,6 +30,19 @@ const mostrandoQR = ref(false);
 const urlParams = new URLSearchParams(window.location.search);
 const planSeleccionado = ref(urlParams.get('plan') || props.tipoPagoRequerido);
 const montoAPagar = ref(parseFloat(urlParams.get('monto')) || props.saldoPendiente);
+
+const rutaGenerarQr = computed(() => (
+    props.contextoStaff ? 'fichas.pago.generar-qr' : 'cliente.pagos.generar-qr'
+));
+const rutaPagoEfectivo = computed(() => (
+    props.contextoStaff ? 'fichas.pago.efectivo' : 'cliente.pagos.efectivo'
+));
+const rutaEstadoPago = computed(() => (
+    props.contextoStaff ? 'fichas.pago.estado-por-id' : 'cliente.pagos.estado-por-id'
+));
+const rutaListadoFichas = computed(() => (
+    props.contextoStaff ? 'fichas.index' : 'cliente.fichas.index'
+));
 
 // Formulario para pago efectivo
 const formularioEfectivo = useForm({
@@ -98,7 +115,7 @@ function generarQr() {
     console.log('🔄 Generando QR...');
     mostrandoQR.value = true;
     
-    router.post(route('cliente.pagos.generar-qr'), {
+    router.post(route(rutaGenerarQr.value), {
         ficha_id: props.ficha.id,
         plan_pago: planSeleccionado.value,
         monto: montoAPagar.value,
@@ -140,7 +157,7 @@ async function consultarEstadoPago() {
 
     try {
         // ✅ NUEVO: Consultar por ID de pago (más confiable)
-        const response = await axios.get(route('cliente.pagos.estado-por-id', pagoId.value));
+        const response = await axios.get(route(rutaEstadoPago.value, pagoId.value));
 
         console.log('📥 Estado del pago:', response.data);
 
@@ -153,7 +170,7 @@ async function consultarEstadoPago() {
                 clearInterval(intervaloConsulta.value);
                 
                 setTimeout(() => {
-                    router.visit(route('cliente.fichas.index'), {
+                    router.visit(route(rutaListadoFichas.value), {
                         onSuccess: () => {
                             alert('✅ ¡Pago confirmado exitosamente!');
                         }
@@ -173,11 +190,11 @@ async function consultarEstadoPago() {
 }
 
 function procesarPagoEfectivo() {
-    formularioEfectivo.post(route('cliente.pagos.efectivo'), {
+    formularioEfectivo.post(route(rutaPagoEfectivo.value), {
         preserveScroll: true,
         onSuccess: () => {
             alert('✅ Pago en efectivo registrado exitosamente.');
-            router.visit(route('cliente.fichas.index'));
+            router.visit(route(rutaListadoFichas.value));
         },
     });
 }

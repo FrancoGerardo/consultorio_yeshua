@@ -73,6 +73,7 @@
                             Historiales Clínicos ({{ historiales.total }})
                         </h3>
                         <button
+                            v-if="puedeCrearHistorial"
                             @click="$inertia.visit(route('historiales-clinicos.create'))"
                             class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
@@ -239,7 +240,7 @@
                     <div v-else class="text-center py-12 text-gray-500">
                         <div class="text-4xl mb-4">📋</div>
                         <p class="text-lg">No se encontraron historiales clínicos</p>
-                        <p class="text-sm mt-2">Intenta ajustar los filtros o crear un nuevo historial</p>
+                        <p class="text-sm mt-2">Los expedientes se crean al registrar pacientes. Ajusta los filtros si no ves resultados.</p>
                     </div>
                 </div>
             </div>
@@ -248,15 +249,18 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { tienePermiso } from '@/Permisos_Ayuda/permisos.js';
 
 const props = defineProps({
     historiales: Object,
     filtros: Object,
     contadorVisitas: Number,
 });
+
+const puedeCrearHistorial = computed(() => tienePermiso('crear-historiales-clinicos'));
 
 const filtrosBusqueda = reactive({
     busqueda: props.filtros?.busqueda || '',

@@ -7,6 +7,7 @@ use App\Models\Ficha;
 use App\Models\HistorialClinico;
 use App\Models\Seguimiento;
 use App\Models\Medico;
+use App\Services\SalaAsignacionService;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,10 @@ use Carbon\Carbon;
 
 class ConsultorioController extends Controller
 {
+    public function __construct(
+        protected SalaAsignacionService $salaAsignacionService
+    ) {}
+
     /**
      * Página principal del consultorio - Cola de pacientes del médico
      */
@@ -30,33 +35,39 @@ class ConsultorioController extends Controller
                 ->with('error', 'Solo los médicos pueden acceder al consultorio.');
         }
 
-        // Obtener pacientes del día en cola
-        $fichasDelDia = Ficha::with([
+        // Obtener pacientes del día en cola (programados + en espera/atención)
+        $baseQuery = Ficha::with([
             'cliente.usuario.persona',
             'servicio',
-            'sala'
+            'sala',
         ])
             ->delDia()
-            ->delMedico($medico->usuario_id)
-            ->whereIn('estado', ['CONFIRMADA', 'EN_ESPERA', 'EN_ATENCION'])
-            ->orderByRaw("CASE 
-                WHEN estado = 'EN_ATENCION' THEN 1
-                WHEN estado = 'EN_ESPERA' THEN 2
-                WHEN estado = 'CONFIRMADA' THEN 3
-                ELSE 4 END")
+            ->delMedico($medico->usuario_id);
+
+        $fichasProgramadas = (clone $baseQuery)
+            ->programadas()
+            ->orderBy('hora')
+            ->get();
+
+        $fichasAtendibles = (clone $baseQuery)
+            ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
+            ->orderByRaw("CASE WHEN estado = 'EN_ATENCION' THEN 1 WHEN estado = 'EN_ESPERA' THEN 2 ELSE 3 END")
             ->orderBy('hora')
             ->get();
 
         // Estadísticas del día
+        $statsQuery = Ficha::delDia()->delMedico($medico->usuario_id);
         $estadisticas = [
-            'total_citas_dia' => Ficha::delDia()->delMedico($medico->usuario_id)->count(),
-            'en_espera' => Ficha::delDia()->delMedico($medico->usuario_id)->enEspera()->count(),
-            'atendidas' => Ficha::delDia()->delMedico($medico->usuario_id)->where('estado', 'ATENDIDA')->count(),
-            'en_atencion' => Ficha::delDia()->delMedico($medico->usuario_id)->enAtencion()->first(),
+            'total_citas_dia' => (clone $statsQuery)->count(),
+            'programadas' => (clone $statsQuery)->programadas()->count(),
+            'en_espera' => (clone $statsQuery)->enEspera()->count(),
+            'atendidas' => (clone $statsQuery)->where('estado', 'ATENDIDA')->count(),
+            'en_atencion' => (clone $statsQuery)->enAtencion()->first(),
         ];
 
         return Inertia::render('Consultorio/ColaPacientes', [
-            'fichas' => $fichasDelDia,
+            'fichas_programadas' => $fichasProgramadas,
+            'fichas_atendibles' => $fichasAtendibles,
             'estadisticas' => $estadisticas,
             'medico' => $medico->load('usuario.persona'),
         ]);
@@ -98,10 +109,12 @@ class ConsultorioController extends Controller
             ->limit(10)
             ->get();
 
+        $historialClinico = HistorialClinico::asegurarParaCliente($ficha->cliente_id);
+
         return response()->json([
             'success' => true,
             'ficha' => $ficha,
-            'historial_clinico' => $ficha->cliente->historialClinico,
+            'historial_clinico' => $historialClinico,
             'seguimientos_previos' => $seguimientosPrevios,
         ]);
     }
@@ -137,8 +150,27 @@ class ConsultorioController extends Controller
             ], 400);
         }
 
+        if ($ficha->estado === 'EN_ATENCION') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Atención ya iniciada.',
+                'ficha' => $ficha,
+            ]);
+        }
+
+        if (!$ficha->puedeIniciarAtencionMedica()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El paciente debe estar en sala de espera. Solicite check-in en recepción.',
+            ], 400);
+        }
+
         // Iniciar atención
         $ficha->iniciarAtencion();
+
+        if ($ficha->sala_id) {
+            $this->salaAsignacionService->sincronizarEstadoSala($ficha->sala_id);
+        }
 
         return response()->json([
             'success' => true,
@@ -211,6 +243,10 @@ class ConsultorioController extends Controller
             // Finalizar atención
             $ficha->finalizarAtencion();
 
+            if ($ficha->sala_id) {
+                $this->salaAsignacionService->sincronizarEstadoSala($ficha->sala_id);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -236,7 +272,10 @@ class ConsultorioController extends Controller
      */
     public function actualizarHistorialClinico(Request $request, string $clienteId)
     {
-        $this->authorize('gestionar-historiales-clinicos');
+        $usuario = auth()->user();
+        if (!$usuario->can('gestionar-historiales-clinicos') && !$usuario->can('editar-historiales-clinicos')) {
+            abort(403);
+        }
 
         $datos = $request->validate([
             'grupo_sanguineo' => 'nullable|string|max:5',
@@ -257,7 +296,7 @@ class ConsultorioController extends Controller
         ]);
 
         try {
-            $historial = HistorialClinico::where('cliente_id', $clienteId)->firstOrFail();
+            $historial = HistorialClinico::asegurarParaCliente($clienteId);
             $historial->update($datos);
 
             return response()->json([
@@ -274,31 +313,6 @@ class ConsultorioController extends Controller
                 'message' => 'Error al actualizar el historial clínico.',
             ], 500);
         }
-    }
-
-    /**
-     * Marcar llegada de paciente (check-in)
-     */
-    public function marcarLlegada(string $fichaId)
-    {
-        $this->authorize('gestionar-seguimientos');
-
-        $ficha = Ficha::findOrFail($fichaId);
-
-        if ($ficha->medico_id !== auth()->id()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No tiene permisos para esta acción.',
-            ], 403);
-        }
-
-        $ficha->marcarLlegada();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Llegada registrada correctamente.',
-            'ficha' => $ficha->fresh(),
-        ]);
     }
 }
 

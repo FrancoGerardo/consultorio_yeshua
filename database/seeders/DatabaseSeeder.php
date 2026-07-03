@@ -619,6 +619,7 @@ class DatabaseSeeder extends Seeder
                             'id' => Str::uuid()->toString(),
                             'descripcion' => "Servicio de {$srv['nombre']} en {$nombreEsp}",
                             'categoria' => $srv['categoria'],
+                            'tipo_sala_requerido' => 'CONSULTORIO',
                             'costo' => $srv['costo'],
                             'duracion_minutos' => $srv['duracion'],
                             'estado' => true,

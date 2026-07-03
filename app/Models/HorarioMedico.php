@@ -27,8 +27,6 @@ class HorarioMedico extends Model
     {
         return [
             'activo' => 'boolean',
-            'hora_inicio' => 'datetime',
-            'hora_fin' => 'datetime',
         ];
     }
 

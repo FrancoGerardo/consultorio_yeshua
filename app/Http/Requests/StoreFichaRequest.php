@@ -20,7 +20,6 @@ class StoreFichaRequest extends FormRequest
             'sala_id' => 'nullable|string|exists:salas,id',
             'fecha' => 'required|date',
             'hora' => 'required|date_format:H:i',
-            'estado' => 'nullable|in:PENDIENTE,CONFIRMADA,ATENDIDA,CANCELADA',
             'motivo_consulta' => 'nullable|string',
         ];
     }
@@ -39,7 +38,6 @@ class StoreFichaRequest extends FormRequest
             'fecha.date' => 'La fecha debe ser válida.',
             'hora.required' => 'La hora es obligatoria.',
             'hora.date_format' => 'La hora debe tener el formato HH:mm.',
-            'estado.in' => 'El estado seleccionado no es válido.',
         ];
     }
 }

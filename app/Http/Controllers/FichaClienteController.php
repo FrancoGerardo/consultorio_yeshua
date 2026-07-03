@@ -9,6 +9,7 @@ use App\Models\Especialidad;
 use App\Models\Medico;
 use App\Models\HorarioMedico;
 use App\Models\Cliente;
+use App\Services\SalaAsignacionService;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,10 @@ use Carbon\Carbon;
 
 class FichaClienteController extends Controller
 {
+    public function __construct(
+        protected SalaAsignacionService $salaAsignacionService
+    ) {}
+
     /**
      * Mostrar página principal de fichas para cliente
      */
@@ -200,7 +205,7 @@ class FichaClienteController extends Controller
         ]);
 
         $fichaId = Str::uuid()->toString();
-        Ficha::create([
+        $ficha = Ficha::create([
             'id' => $fichaId,
             'cliente_id' => $usuario->id,
             'servicio_id' => $request->servicio_id,
@@ -210,6 +215,8 @@ class FichaClienteController extends Controller
             'estado' => 'PENDIENTE_PAGO',
             'motivo_consulta' => $request->motivo_consulta,
         ]);
+
+        $ficha->intentarAsignarSalaAutomaticamente();
 
         // Redirigir a pantalla de selección de plan de pago
         return redirect()->route('cliente.pagos.seleccionar-plan', $fichaId)
@@ -246,6 +253,10 @@ class FichaClienteController extends Controller
 
             $ficha->update(['estado' => 'CANCELADA']);
         });
+
+        if ($ficha->sala_id) {
+            $this->salaAsignacionService->sincronizarEstadoSala($ficha->sala_id);
+        }
 
         return redirect()->route('cliente.fichas.index')
             ->with('success', 'Ficha cancelada correctamente. El horario quedó disponible.');

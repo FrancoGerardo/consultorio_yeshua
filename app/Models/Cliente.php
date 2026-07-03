@@ -42,5 +42,12 @@ class Cliente extends Model
     {
         return $this->hasOne(HistorialClinico::class, 'cliente_id', 'usuario_id');
     }
+
+    protected static function booted(): void
+    {
+        static::created(function (Cliente $cliente) {
+            HistorialClinico::asegurarParaCliente($cliente->usuario_id);
+        });
+    }
 }
 

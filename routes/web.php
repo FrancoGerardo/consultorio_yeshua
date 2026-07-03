@@ -19,6 +19,7 @@ use App\Http\Controllers\FichaController;
 use App\Http\Controllers\SeguimientoController;
 use App\Http\Controllers\HistorialClinicoController;
 use App\Http\Controllers\ConsultorioController;
+use App\Http\Controllers\RecepcionController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\ContactoController;
@@ -141,6 +142,11 @@ Route::middleware([
     Route::get('/fichas/crear', [FichaController::class, 'crearFicha'])->name('fichas.create');
     Route::post('/fichas', [FichaController::class, 'guardarFicha'])->name('fichas.store');
     Route::get('/fichas/horarios/disponibles', [FichaController::class, 'horariosDisponibles'])->name('fichas.horarios-disponibles');
+    Route::get('/fichas/{fichaId}/pago/plan', [PagoClienteController::class, 'seleccionarPlanPago'])->name('fichas.pago.plan');
+    Route::get('/fichas/{fichaId}/pago/procesar', [PagoClienteController::class, 'procesarPago'])->name('fichas.pago.procesar');
+    Route::post('/fichas/pago/efectivo', [PagoClienteController::class, 'registrarPagoEfectivo'])->name('fichas.pago.efectivo');
+    Route::post('/fichas/pago/generar-qr', [PagoClienteController::class, 'generarQr'])->name('fichas.pago.generar-qr');
+    Route::get('/fichas/pago/{id}/estado', [PagoClienteController::class, 'obtenerEstadoPorId'])->name('fichas.pago.estado-por-id');
     Route::get('/fichas/{id}', [FichaController::class, 'mostrarFicha'])->name('fichas.show');
     Route::get('/fichas/{id}/editar', [FichaController::class, 'editarFicha'])->name('fichas.edit');
     Route::put('/fichas/{id}', [FichaController::class, 'actualizarFicha'])->name('fichas.update');
@@ -175,7 +181,12 @@ Route::middleware([
         Route::post('/iniciar-atencion/{fichaId}', [ConsultorioController::class, 'iniciarAtencion'])->name('consultorio.iniciar');
         Route::post('/guardar-consulta/{fichaId}', [ConsultorioController::class, 'guardarConsulta'])->name('consultorio.guardar');
         Route::put('/actualizar-historial/{clienteId}', [ConsultorioController::class, 'actualizarHistorialClinico'])->name('consultorio.actualizar-historial');
-        Route::post('/marcar-llegada/{fichaId}', [ConsultorioController::class, 'marcarLlegada'])->name('consultorio.llegada');
+    });
+
+    // Recepción: check-in de pacientes (secretaría)
+    Route::prefix('recepcion')->group(function () {
+        Route::get('/', [RecepcionController::class, 'index'])->name('recepcion.index');
+        Route::post('/marcar-llegada/{fichaId}', [RecepcionController::class, 'marcarLlegada'])->name('recepcion.llegada');
     });
 
     // Rutas de Reportes (Sistema Nuevo)

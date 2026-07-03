@@ -22,4 +22,9 @@ class Sala extends Model
         'estado',
         'capacidad',
     ];
+
+    public function fichas()
+    {
+        return $this->hasMany(Ficha::class, 'sala_id', 'id');
+    }
 }

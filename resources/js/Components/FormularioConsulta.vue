@@ -2,7 +2,7 @@
     <div class="bg-white rounded-lg shadow-md p-6">
         <h3 class="text-xl font-bold mb-4">📝 Nueva Consulta</h3>
 
-        <form @submit.prevent="$emit('guardar', formulario)">
+        <form @submit.prevent="guardar">
             <!-- Tipo de Consulta -->
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -167,9 +167,10 @@
             <div class="flex gap-4">
                 <button
                     type="submit"
-                    class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                    :disabled="guardando"
+                    class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold disabled:opacity-50"
                 >
-                    💾 Guardar Consulta
+                    {{ guardando ? 'Guardando...' : '💾 Guardar Consulta' }}
                 </button>
                 <button
                     type="button"
@@ -184,13 +185,27 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue';
+import { reactive, ref, watch } from 'vue';
+import axios from 'axios';
 
-defineEmits(['guardar', 'cancelar']);
+const props = defineProps({
+    fichaId: {
+        type: String,
+        required: true,
+    },
+    motivoInicial: {
+        type: String,
+        default: '',
+    },
+});
+
+const emit = defineEmits(['consulta-guardada', 'cancelar']);
+
+const guardando = ref(false);
 
 const formulario = reactive({
     tipo_consulta: 'CONTROL',
-    motivo_consulta: '',
+    motivo_consulta: props.motivoInicial || '',
     presion_arterial: '',
     frecuencia_cardiaca: '',
     temperatura: '',
@@ -203,5 +218,76 @@ const formulario = reactive({
     examenes_solicitados: '',
     observaciones: '',
 });
-</script>
 
+watch(
+    () => props.motivoInicial,
+    (motivo) => {
+        if (motivo && !formulario.motivo_consulta) {
+            formulario.motivo_consulta = motivo;
+        }
+    },
+    { immediate: true }
+);
+
+const mapearTipo = (tipoConsulta) => {
+    const map = {
+        PRIMERA_VEZ: 'CONSULTA',
+        CONTROL: 'CONSULTA',
+        EMERGENCIA: 'TRIAGE',
+    };
+    return map[tipoConsulta] || 'CONSULTA';
+};
+
+const parseExamenes = (texto) => {
+    if (!texto?.trim()) {
+        return null;
+    }
+    return texto.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+};
+
+const construirSignosVitales = () => {
+    const signos = {
+        presion_arterial: formulario.presion_arterial || null,
+        frecuencia_cardiaca: formulario.frecuencia_cardiaca ? Number(formulario.frecuencia_cardiaca) : null,
+        temperatura: formulario.temperatura ? Number(formulario.temperatura) : null,
+        peso: formulario.peso ? Number(formulario.peso) : null,
+        saturacion_oxigeno: formulario.saturacion_oxigeno ? Number(formulario.saturacion_oxigeno) : null,
+        frecuencia_respiratoria: formulario.frecuencia_respiratoria ? Number(formulario.frecuencia_respiratoria) : null,
+    };
+
+    const tieneDatos = Object.values(signos).some((v) => v !== null && v !== '');
+    return tieneDatos ? signos : null;
+};
+
+const guardar = async () => {
+    guardando.value = true;
+    try {
+        const payload = {
+            tipo: mapearTipo(formulario.tipo_consulta),
+            motivo_consulta: formulario.motivo_consulta,
+            diagnostico: formulario.diagnostico,
+            codigo_cie10: formulario.codigo_cie10 || null,
+            observaciones: formulario.observaciones || null,
+            tratamiento_prescrito: formulario.tratamiento,
+            signos_vitales: construirSignosVitales(),
+            examenes_solicitados: parseExamenes(formulario.examenes_solicitados),
+            nivel_urgencia: formulario.tipo_consulta === 'EMERGENCIA' ? 'URGENTE' : null,
+        };
+
+        const response = await axios.post(route('consultorio.guardar', props.fichaId), payload);
+
+        if (response.data.success) {
+            emit('consulta-guardada');
+        } else {
+            alert(response.data.message || 'No se pudo guardar la consulta');
+        }
+    } catch (error) {
+        const mensaje = error.response?.data?.message
+            || error.response?.data?.errors
+            || 'Error al guardar la consulta';
+        alert(typeof mensaje === 'object' ? JSON.stringify(mensaje) : mensaje);
+    } finally {
+        guardando.value = false;
+    }
+};
+</script>

@@ -13,21 +13,35 @@ use App\Models\Pago;
 use Inertia\Inertia;
 use App\Http\Requests\StoreFichaRequest;
 use App\Http\Requests\UpdateFichaRequest;
+use App\Services\SalaAsignacionService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class FichaController extends Controller
 {
+    public function __construct(
+        protected SalaAsignacionService $salaAsignacionService
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
     public function paginaPrincipalFicha()
     {
-        $this->authorize('gestionar-fichas');
+        $usuario = auth()->user();
 
-        $fichas = Ficha::with(['cliente.usuario.persona', 'servicio', 'medico.usuario.persona', 'sala'])
-            ->paginate(10);
+        if (!$usuario->can('gestionar-fichas') && !$usuario->can('ver-fichas')) {
+            abort(403);
+        }
+
+        $query = Ficha::with(['cliente.usuario.persona', 'servicio', 'medico.usuario.persona', 'sala']);
+
+        if (!$usuario->can('gestionar-fichas') && $usuario->medico) {
+            $query->where('medico_id', $usuario->medico->usuario_id);
+        }
+
+        $fichas = $query->orderByDesc('fecha')->orderByDesc('hora')->paginate(10);
         $contadorVisitas = DB::table('visitas_paginas')
             ->where('ruta', 'fichas')
             ->count();
@@ -53,8 +67,21 @@ class FichaController extends Controller
      */
     public function guardarFicha(StoreFichaRequest $datos)
     {
+        $servicio = Servicio::findOrFail($datos->servicio_id);
+
+        if ($datos->sala_id && ! $this->salaAsignacionService->salaEstaDisponible(
+            $datos->sala_id,
+            $servicio,
+            $datos->fecha,
+            $datos->hora
+        )) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['sala_id' => 'La sala seleccionada no está disponible en ese horario.']);
+        }
+
         $fichaId = Str::uuid()->toString();
-        Ficha::create([
+        $ficha = Ficha::create([
             'id' => $fichaId,
             'cliente_id' => $datos->cliente_id,
             'servicio_id' => $datos->servicio_id,
@@ -62,12 +89,16 @@ class FichaController extends Controller
             'sala_id' => $datos->sala_id,
             'fecha' => $datos->fecha,
             'hora' => $datos->hora,
-            'estado' => $datos->estado ?? 'PENDIENTE',
+            'estado' => 'PENDIENTE_PAGO',
             'motivo_consulta' => $datos->motivo_consulta,
         ]);
 
-        return redirect()->route('fichas.index')
-            ->with('success', 'Ficha creada exitosamente.');
+        if (! $ficha->sala_id) {
+            $ficha->intentarAsignarSalaAutomaticamente();
+        }
+
+        return redirect()->route('fichas.pago.plan', $fichaId)
+            ->with('success', 'Ficha registrada. Complete el pago para confirmar la cita.');
     }
 
     /**
@@ -113,6 +144,21 @@ class FichaController extends Controller
     public function actualizarFicha(UpdateFichaRequest $datos, string $id)
     {
         $ficha = Ficha::findOrFail($id);
+        $servicio = Servicio::findOrFail($datos->servicio_id);
+
+        if ($datos->sala_id && ! $this->salaAsignacionService->salaEstaDisponible(
+            $datos->sala_id,
+            $servicio,
+            $datos->fecha,
+            $datos->hora,
+            $ficha->id
+        )) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['sala_id' => 'La sala seleccionada no está disponible en ese horario.']);
+        }
+
+        $salaAnteriorId = $ficha->sala_id;
 
         $ficha->update([
             'cliente_id' => $datos->cliente_id,
@@ -121,9 +167,16 @@ class FichaController extends Controller
             'sala_id' => $datos->sala_id,
             'fecha' => $datos->fecha,
             'hora' => $datos->hora,
-            'estado' => $datos->estado,
             'motivo_consulta' => $datos->motivo_consulta,
         ]);
+
+        if (! $ficha->sala_id) {
+            $ficha->intentarAsignarSalaAutomaticamente();
+        }
+
+        if ($salaAnteriorId && $salaAnteriorId !== $ficha->sala_id) {
+            $this->salaAsignacionService->sincronizarEstadoSala($salaAnteriorId);
+        }
 
         return redirect()->route('fichas.index')
             ->with('success', 'Ficha actualizada exitosamente.');
@@ -138,7 +191,13 @@ class FichaController extends Controller
 
         $ficha = Ficha::findOrFail($id);
 
+        $salaAnteriorId = $ficha->sala_id;
+
         $ficha->delete();
+
+        if ($salaAnteriorId) {
+            $this->salaAsignacionService->sincronizarEstadoSala($salaAnteriorId);
+        }
 
         return redirect()->route('fichas.index')
             ->with('success', 'Ficha eliminada exitosamente.');
@@ -219,19 +278,19 @@ class FichaController extends Controller
             ->where('fecha', $fecha->toDateString())
             ->ocupanHorario()
             ->pluck('hora')
-            ->map(fn ($hora) => substr($hora, 0, 5))
+            ->map(fn ($hora) => $this->normalizarHoraTexto($hora))
             ->toArray();
 
         $slots = [];
 
         foreach ($horariosConfigurados as $configuracion) {
-            $inicio = Carbon::createFromFormat('H:i:s', $configuracion->hora_inicio);
-            $fin = Carbon::createFromFormat('H:i:s', $configuracion->hora_fin);
+            $inicio = $this->parseHoraDelDia($configuracion->hora_inicio);
+            $fin = $this->parseHoraDelDia($configuracion->hora_fin);
 
             $cursor = $inicio->copy();
             while ($cursor->copy()->addMinutes($duracion)->lte($fin)) {
                 $horaTexto = $cursor->format('H:i');
-                if (!in_array($horaTexto, $horasOcupadas)) {
+                if (!in_array($horaTexto, $horasOcupadas, true)) {
                     $slots[] = $horaTexto;
                 }
                 $cursor->addMinutes($duracion);
@@ -266,7 +325,7 @@ class FichaController extends Controller
         $medicos = Medico::with(['usuario.persona', 'especialidades'])
             ->get();
 
-        $salas = Sala::where('estado', 'DISPONIBLE')
+        $salas = Sala::whereIn('estado', config('salas.estados_asignables', ['DISPONIBLE', 'OCUPADA']))
             ->orderBy('numero')
             ->get();
 
@@ -275,6 +334,8 @@ class FichaController extends Controller
             'servicios' => $servicios,
             'medicos' => $medicos,
             'salas' => $salas,
+            'tipos_sala' => config('salas.tipos', []),
+            'mapa_categoria_sala' => config('salas.categoria_servicio_a_tipos_sala', []),
         ];
     }
 
@@ -294,6 +355,37 @@ class FichaController extends Controller
         ];
 
         return $mapa[$fecha->dayOfWeekIso] ?? 'LUNES';
+    }
+
+    /**
+     * Normaliza un valor TIME/datetime a texto HH:MM.
+     */
+    private function normalizarHoraTexto(mixed $hora): string
+    {
+        return $this->parseHoraDelDia($hora)->format('H:i');
+    }
+
+    /**
+     * Convierte hora de BD (TIME, string o Carbon) a Carbon solo con componente horario.
+     */
+    private function parseHoraDelDia(mixed $hora): Carbon
+    {
+        if ($hora instanceof Carbon) {
+            return Carbon::createFromTime($hora->hour, $hora->minute, $hora->second);
+        }
+
+        $texto = trim((string) $hora);
+
+        if (preg_match('/(\d{1,2}:\d{2}(?::\d{2})?)/', $texto, $coincidencia)) {
+            $fragmento = $coincidencia[1];
+            $formato = strlen($fragmento) === 5 ? 'H:i' : 'H:i:s';
+
+            return Carbon::createFromFormat($formato, $fragmento);
+        }
+
+        $parseada = Carbon::parse($texto);
+
+        return Carbon::createFromTime($parseada->hour, $parseada->minute, $parseada->second);
     }
 }
 

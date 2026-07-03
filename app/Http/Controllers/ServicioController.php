@@ -30,6 +30,7 @@ class ServicioController extends Controller
         return Inertia::render('Servicios/Index', [
             'servicios' => $servicios,
             'contadorVisitas' => $contadorVisitas,
+            'tiposSala' => config('salas.tipos', []),
         ]);
     }
 
@@ -65,6 +66,7 @@ class ServicioController extends Controller
             'nombre' => $datos->nombre,
             'descripcion' => $datos->descripcion,
             'categoria' => $datos->categoria,
+            'tipo_sala_requerido' => $this->resolverTipoSalaRequerido($datos->tipo_sala_requerido, $datos->categoria),
             'especialidad_id' => $datos->especialidad_id,
             'meedico_id' => $datos->meedico_id ?? null,
             'costo' => $datos->costo,
@@ -134,6 +136,7 @@ class ServicioController extends Controller
             'nombre' => $datos->nombre,
             'descripcion' => $datos->descripcion,
             'categoria' => $datos->categoria,
+            'tipo_sala_requerido' => $this->resolverTipoSalaRequerido($datos->tipo_sala_requerido, $datos->categoria),
             'especialidad_id' => $datos->especialidad_id,
             'meedico_id' => $datos->meedico_id ?? null,
             'costo' => $datos->costo,
@@ -158,6 +161,17 @@ class ServicioController extends Controller
 
         return redirect()->route('servicios.index')
             ->with('success', 'Servicio eliminado exitosamente.');
+    }
+
+    private function resolverTipoSalaRequerido(?string $tipo, string $categoria): ?string
+    {
+        if ($tipo) {
+            return $tipo;
+        }
+
+        $mapa = config('salas.categoria_servicio_a_tipos_sala', []);
+
+        return $mapa[$categoria][0] ?? 'CONSULTORIO';
     }
 }
 

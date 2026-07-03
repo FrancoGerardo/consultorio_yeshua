@@ -1,6 +1,6 @@
 -- ============================================================================
 -- CONSULTORIO MEDICO YESHUA - Esquema PostgreSQL consolidado
--- Refleja el estado FINAL de las 38 migraciones Laravel (2026_05_01 .. 2026_07_02)
+-- Refleja el estado FINAL de las 39 migraciones Laravel (2026_05_01 .. 2026_07_03)
 -- Generado desde: database/migrations/
 -- Nota: No incluye tabla migrations ni datos seed. Para Laravel use: php artisan migrate
 -- ============================================================================
@@ -200,12 +200,14 @@ ALTER TABLE especialidades
 -- 2026_05_16_000100_create_servicios_table.php
 -- 2026_06_14_000100_add_especialidad_id_to_servicios_table.php
 -- 2026_06_19_000100_add_meedico_id_to_servicios_table.php
+-- 2026_07_03_000001_agregar_tipo_sala_requerido_servicios.php
 CREATE TABLE servicios (
-    id                  VARCHAR(50) PRIMARY KEY,
-    nombre              VARCHAR(100) NOT NULL,
-    descripcion         TEXT NULL,
-    categoria           VARCHAR(20) NOT NULL,
-    especialidad_id     VARCHAR(50) NULL,
+    id                      VARCHAR(50) PRIMARY KEY,
+    nombre                  VARCHAR(100) NOT NULL,
+    descripcion             TEXT NULL,
+    categoria               VARCHAR(20) NOT NULL,
+    tipo_sala_requerido     VARCHAR(50) NULL,
+    especialidad_id         VARCHAR(50) NULL,
     meedico_id          VARCHAR(50) NULL,
     costo               DECIMAL(10, 2) NOT NULL,
     duracion_minutos    INTEGER NULL,

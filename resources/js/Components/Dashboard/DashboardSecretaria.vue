@@ -4,16 +4,32 @@
         <!-- Resumen Rápido -->
         <div class="bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg shadow-md p-6">
             <h3 class="text-xl font-bold mb-4">📊 Resumen del Día</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="bg-white rounded-lg p-4">
-                    <p class="text-sm text-gray-600">Citas Confirmadas</p>
+                    <p class="text-sm text-gray-600">Por Llegar (Check-in)</p>
+                    <p class="text-3xl font-bold text-blue-600">{{ datos.resumen?.citas_pendientes_confirmacion || 0 }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-sm text-gray-600">En Sala de Espera</p>
+                    <p class="text-3xl font-bold text-yellow-600">{{ datos.resumen?.en_espera || 0 }}</p>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Atendidas</p>
                     <p class="text-3xl font-bold text-green-600">{{ datos.resumen?.citas_confirmadas || 0 }}</p>
                 </div>
-                <div class="bg-white rounded-lg p-4">
-                    <p class="text-sm text-gray-600">Pendientes de Confirmación</p>
-                    <p class="text-3xl font-bold text-orange-600">{{ datos.resumen?.citas_pendientes_confirmacion || 0 }}</p>
-                </div>
             </div>
+        </div>
+
+        <!-- Acceso Recepción -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white text-center">
+            <h3 class="text-2xl font-bold mb-2">🛎️ Panel de Recepción</h3>
+            <p class="mb-4 opacity-90">Registre la llegada de pacientes cuando se presenten</p>
+            <button
+                @click="$inertia.visit(route('recepcion.index'))"
+                class="px-8 py-3 bg-white text-blue-600 rounded-lg font-bold hover:bg-gray-100 transition"
+            >
+                ➡️ Ir a Recepción
+            </button>
         </div>
 
         <!-- Accesos Rápidos -->
@@ -64,8 +80,8 @@
                         class="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
                     >
                         <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                                <span class="text-xl font-bold text-orange-600">{{ ficha.numero_ficha }}</span>
+                            <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <span class="text-sm font-bold text-yellow-700">{{ formatearHora(ficha.hora) }}</span>
                             </div>
                             <div>
                                 <p class="font-bold text-gray-900">
@@ -88,9 +104,9 @@
                 </div>
             </div>
 
-            <!-- Próximas Fichas Pendientes -->
+            <!-- Próximas Citas por llegar -->
             <div class="bg-white rounded-lg shadow-md p-6">
-                <h3 class="text-xl font-bold mb-4">🔔 Próximas Fichas Pendientes</h3>
+                <h3 class="text-xl font-bold mb-4">📅 Citas por Llegar</h3>
                 
                 <div v-if="datos.proximas_citas && datos.proximas_citas.length > 0" class="space-y-3">
                     <div
@@ -121,7 +137,7 @@
 
                 <div v-else class="text-center py-8 text-gray-500">
                     <p class="text-5xl mb-2">📭</p>
-                    <p>No hay fichas pendientes</p>
+                    <p>No hay citas pendientes de check-in</p>
                 </div>
             </div>
         </div>
@@ -136,9 +152,11 @@
                     :key="cita.id"
                     class="flex items-center justify-between p-3 border-l-4 rounded"
                     :class="{
-                        'border-green-500 bg-green-50': cita.estado === 'ATENDIDO',
-                        'border-yellow-500 bg-yellow-50': cita.estado === 'PENDIENTE',
-                        'border-red-500 bg-red-50': cita.estado === 'CANCELADO',
+                        'border-green-500 bg-green-50': cita.estado === 'ATENDIDA',
+                        'border-blue-500 bg-blue-50': ['PAGADA_COMPLETA', 'CONFIRMADA'].includes(cita.estado),
+                        'border-orange-500 bg-orange-50': cita.estado === 'ANTICIPO_PAGADO',
+                        'border-yellow-500 bg-yellow-50': cita.estado === 'EN_ESPERA',
+                        'border-red-500 bg-red-50': cita.estado === 'EN_ATENCION',
                     }"
                 >
                     <div class="flex items-center gap-4">
@@ -160,11 +178,13 @@
                         class="px-3 py-1 rounded text-xs font-semibold"
                         :class="{
                             'bg-green-200 text-green-800': cita.estado === 'ATENDIDA',
-                            'bg-blue-200 text-blue-800': cita.estado === 'EN_ATENCION',
+                            'bg-blue-200 text-blue-800': ['PAGADA_COMPLETA', 'CONFIRMADA'].includes(cita.estado),
+                            'bg-orange-200 text-orange-800': cita.estado === 'ANTICIPO_PAGADO',
                             'bg-yellow-200 text-yellow-800': cita.estado === 'EN_ESPERA',
+                            'bg-red-200 text-red-800': cita.estado === 'EN_ATENCION',
                         }"
                     >
-                        {{ cita.estado }}
+                        {{ etiquetaEstado(cita.estado) }}
                     </span>
                 </div>
             </div>
@@ -178,16 +198,26 @@
 </template>
 
 <script setup>
+import { formatearHoraCita } from '@/utils/formatearHora';
+
 defineProps({
     datos: Object,
 });
 
-const formatearHora = (fechaHora) => {
-    if (!fechaHora) return 'N/A';
-    return new Date(fechaHora).toLocaleTimeString('es-BO', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+const formatearHora = formatearHoraCita;
+
+const etiquetaEstado = (estado) => {
+    const map = {
+        ATENDIDA: 'Atendida',
+        PAGADA_COMPLETA: 'Programada',
+        ANTICIPO_PAGADO: 'Anticipo pagado',
+        CONFIRMADA: 'Confirmada',
+        EN_ESPERA: 'En espera',
+        EN_ATENCION: 'En atención',
+        PENDIENTE_PAGO: 'Pendiente pago',
+        CANCELADA: 'Cancelada',
+    };
+    return map[estado] || estado;
 };
 
 const calcularTiempoRestante = (fecha) => {
