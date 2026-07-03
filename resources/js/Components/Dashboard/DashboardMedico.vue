@@ -25,7 +25,7 @@
             <h3 class="text-2xl font-bold mb-2">🩺 Acceso al Consultorio</h3>
             <p class="mb-4 opacity-90">Gestiona tu cola de pacientes y realiza consultas</p>
             <button
-                @click="$inertia.visit(route('consultorio.principal'))"
+                @click="$inertia.visit(route('consultorio.cola'))"
                 class="px-8 py-3 bg-white text-green-600 rounded-lg font-bold hover:bg-gray-100 transition"
             >
                 ➡️ Ir al Consultorio
@@ -56,7 +56,7 @@
                             </div>
                         </div>
                         <button
-                            @click="$inertia.visit(route('consultorio.principal'))"
+                            @click="$inertia.visit(route('consultorio.cola'))"
                             class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold"
                         >
                             Atender
@@ -125,7 +125,7 @@
             <h3 class="text-xl font-bold mb-4">⚡ Accesos Rápidos</h3>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button
-                    @click="$inertia.visit(route('consultorio.principal'))"
+                    @click="$inertia.visit(route('consultorio.cola'))"
                     class="flex flex-col items-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
                 >
                     <span class="text-3xl mb-2">🩺</span>

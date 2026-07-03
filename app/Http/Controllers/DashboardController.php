@@ -225,11 +225,11 @@ class DashboardController extends Controller
         }
 
         return [
-            // Próximas fichas del cliente
+            // Próximas fichas pagadas en su totalidad
             'proximas_citas' => Ficha::with(['medico.usuario.persona', 'servicio'])
                 ->where('cliente_id', $cliente->usuario_id)
+                ->pagadaCompleta()
                 ->whereDate('fecha', '>=', Carbon::today())
-                ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
                 ->orderBy('fecha')
                 ->orderBy('hora')
                 ->limit(5)
@@ -250,10 +250,13 @@ class DashboardController extends Controller
 
             // Resumen
             'resumen' => [
-                'total_citas' => Ficha::where('cliente_id', $cliente->usuario_id)->count(),
-                'proxima_cita' => Ficha::where('cliente_id', $cliente->usuario_id)
+                'total_citas' => Ficha::where('cliente_id', $cliente->usuario_id)
+                    ->pagadaCompleta()
+                    ->count(),
+                'proxima_cita' => Ficha::with(['medico.usuario.persona', 'servicio'])
+                    ->where('cliente_id', $cliente->usuario_id)
+                    ->pagadaCompleta()
                     ->whereDate('fecha', '>=', Carbon::today())
-                    ->whereIn('estado', ['EN_ESPERA', 'EN_ATENCION'])
                     ->orderBy('fecha')
                     ->orderBy('hora')
                     ->first(),

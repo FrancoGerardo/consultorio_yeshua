@@ -30,12 +30,24 @@ class FichaClienteController extends Controller
         }
 
         $fichas = Ficha::where('cliente_id', $usuario->id)
-            ->with(['servicio', 'medico.usuario.persona', 'sala'])
+            ->with(['servicio', 'medico.usuario.persona', 'sala', 'pagos'])
             ->withExists(['pagos as tiene_pago_pendiente' => function ($query) {
                 $query->where('estado', 'PENDIENTE');
             }])
             ->orderBy('fecha', 'desc')
             ->paginate(10);
+
+        $fichas->getCollection()->transform(function (Ficha $ficha) {
+            if ($ficha->servicio && in_array($ficha->estado, Ficha::estadosGestionadosPorPago(), true)) {
+                $ficha->actualizarEstadoPorPago();
+            }
+
+            $ficha->total_pagado = $ficha->calcularTotalPagado();
+            $ficha->saldo_pendiente = $ficha->calcularSaldoPendiente();
+            $ficha->costo_total = $ficha->obtenerCostoNetoAcordado();
+
+            return $ficha;
+        });
 
         return Inertia::render('FichasCliente/Index', [
             'fichas' => $fichas,

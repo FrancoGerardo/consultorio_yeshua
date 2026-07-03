@@ -13,7 +13,7 @@
                 <div class="flex items-center gap-4">
                     <div class="text-5xl">📅</div>
                     <div>
-                        <p class="text-sm text-gray-600">Total de Citas</p>
+                        <p class="text-sm text-gray-600">Citas pagadas</p>
                         <p class="text-4xl font-bold text-blue-600">{{ datos.resumen?.total_citas || 0 }}</p>
                     </div>
                 </div>
@@ -25,7 +25,7 @@
                     <div>
                         <p class="text-sm text-gray-600">Próxima Ficha</p>
                         <p class="text-lg font-bold text-green-600">
-                            {{ datos.resumen?.proxima_cita ? formatearFecha(datos.resumen.proxima_cita.fecha) : 'Sin fichas' }}
+                            {{ datos.resumen?.proxima_cita ? formatearProximaCita(datos.resumen.proxima_cita) : 'Sin citas pagadas' }}
                         </p>
                     </div>
                 </div>
@@ -62,17 +62,20 @@
 
         <!-- Próximas Fichas -->
         <div class="bg-white rounded-lg shadow-md p-6">
-            <h3 class="text-xl font-bold mb-4">📅 Mis Próximas Fichas</h3>
+            <h3 class="text-xl font-bold mb-4">📅 Mis Próximas Fichas Pagadas</h3>
             
             <div v-if="datos.proximas_citas && datos.proximas_citas.length > 0" class="space-y-4">
                 <div
                     v-for="cita in datos.proximas_citas"
                     :key="cita.id"
-                    class="p-4 border-l-4 border-blue-500 bg-blue-50 rounded-lg"
+                    class="p-4 border-l-4 border-emerald-500 bg-emerald-50 rounded-lg"
                 >
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="text-sm text-gray-600">{{ formatFecha(cita.fecha) }}</p>
+                            <p class="text-sm text-gray-600">
+                                {{ formatearFecha(cita.fecha) }}
+                                <span v-if="cita.hora"> · {{ formatearHora(cita.hora) }}</span>
+                            </p>
                             <p class="text-xl font-bold text-gray-900 mt-1">
                                 Dr(a). {{ cita.medico?.usuario?.persona?.nombre_completo || 'N/A' }}
                             </p>
@@ -80,15 +83,8 @@
                                 📋 {{ cita.servicio?.nombre || 'N/A' }}
                             </p>
                             <div class="mt-2">
-                                <span
-                                    class="px-3 py-1 rounded text-xs font-semibold"
-                                    :class="{
-                                        'bg-green-200 text-green-800': cita.estado === 'ATENDIDA',
-                                        'bg-blue-200 text-blue-800': cita.estado === 'EN_ATENCION',
-                                        'bg-yellow-200 text-yellow-800': cita.estado === 'EN_ESPERA',
-                                    }"
-                                >
-                                    {{ cita.estado }}
+                                <span class="px-3 py-1 rounded text-xs font-semibold bg-emerald-200 text-emerald-800">
+                                    Pagada completa
                                 </span>
                             </div>
                         </div>
@@ -107,12 +103,13 @@
 
             <div v-else class="text-center py-8 text-gray-500">
                 <p class="text-6xl mb-4">📭</p>
-                <p class="text-lg">No tiene fichas programadas</p>
+                <p class="text-lg">No tiene citas pagadas en su totalidad</p>
+                <p class="text-sm mt-2">Las fichas con anticipo pendiente se gestionan en Mis Fichas</p>
                 <button
-                    @click="$inertia.visit(route('cliente.servicios.index'))"
+                    @click="$inertia.visit(route('cliente.fichas.index'))"
                     class="mt-4 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
                 >
-                    Solicitar Nuevo Servicio
+                    Ver Mis Fichas
                 </button>
             </div>
         </div>
@@ -196,9 +193,23 @@ const formatearFecha = (fecha) => {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
     });
+};
+
+const formatearHora = (hora) => {
+    if (!hora) return '';
+    if (typeof hora === 'string') {
+        const valorHora = hora.includes('T') ? hora.split('T')[1] : hora;
+        const partes = valorHora.split(':');
+        return `${partes[0]}:${partes[1]}`;
+    }
+    return hora;
+};
+
+const formatearProximaCita = (cita) => {
+    const fecha = formatearFecha(cita.fecha);
+    const hora = formatearHora(cita.hora);
+    return hora ? `${fecha} · ${hora}` : fecha;
 };
 
 const formatearFechaCompleta = (fecha) => {

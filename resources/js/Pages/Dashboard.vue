@@ -2,7 +2,7 @@
     <AppLayout :title="rol === 'CLIENTE' ? 'Inicio' : 'Dashboard'">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                👋 Bienvenido, {{ usuario.persona.nombres }}
+                👋 Bienvenido, {{ usuario.persona?.nombre_completo || usuario.persona?.nombre || 'Usuario' }}
             </h2>
         </template>
 

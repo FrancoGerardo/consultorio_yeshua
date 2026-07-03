@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Ficha;
 use App\Models\Pago;
 use App\Models\MetodoPago;
 use App\Models\PlanCuota;
@@ -85,8 +86,22 @@ class PagoController extends Controller
 
         // Cliente (y otros roles sin acceso): obtener pagos del usuario
         $pagos = Pago::obtenerPorUsuario($usuario->id)
-            ->with(['ficha.servicio', 'ficha.medico.usuario.persona'])
+            ->with(['ficha.servicio', 'ficha.medico.usuario.persona', 'ficha.sala', 'ficha.pagos'])
             ->paginate(10);
+
+        $pagos->getCollection()->transform(function (Pago $pago) {
+            if ($pago->ficha instanceof Ficha) {
+                $ficha = $pago->ficha;
+                $ficha->total_pagado = $ficha->calcularTotalPagado();
+                $ficha->saldo_pendiente = $ficha->calcularSaldoPendiente();
+                $ficha->costo_total = $ficha->obtenerCostoNetoAcordado();
+                $ficha->tiene_pago_pendiente = $ficha->pagos->contains(
+                    fn ($item) => $item->estado === 'PENDIENTE'
+                );
+            }
+
+            return $pago;
+        });
 
         return Inertia::render('Pagos/Index', [
             'pagos' => $pagos,

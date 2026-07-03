@@ -1,12 +1,16 @@
 <script setup>
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DetalleFichaClienteModal from '@/Components/DetalleFichaClienteModal.vue';
 
 defineProps({
     fichas: Object,
 });
 
 const page = usePage();
+const modalDetalle = ref(false);
+const fichaDetalle = ref(null);
 
 function getEstadoClass(ficha) {
     if (estaEsperandoConfirmacionPago(ficha)) {
@@ -25,12 +29,22 @@ function getEstadoClass(ficha) {
     return clases[ficha.estado] || 'bg-gray-100 text-gray-800';
 }
 
+const etiquetasEstado = {
+    'PENDIENTE_PAGO': 'Pendiente de pago',
+    'ANTICIPO_PAGADO': 'Anticipo pagado',
+    'PAGADA_COMPLETA': 'Pagada completa',
+    'PENDIENTE': 'Pendiente',
+    'CONFIRMADA': 'Confirmada',
+    'ATENDIDA': 'Atendida',
+    'CANCELADA': 'Cancelada',
+};
+
 function getEstadoTexto(ficha) {
     if (estaEsperandoConfirmacionPago(ficha)) {
         return 'Esperando confirmación de pago';
     }
 
-    return (ficha.estado || '').replace(/_/g, ' ');
+    return etiquetasEstado[ficha.estado] || (ficha.estado || '').replace(/_/g, ' ');
 }
 
 function estaEsperandoConfirmacionPago(ficha) {
@@ -42,7 +56,7 @@ function formatearFecha(fecha) {
     return new Date(fecha).toLocaleDateString('es-BO', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
     });
 }
 
@@ -56,14 +70,48 @@ function formatearHora(hora) {
     return hora;
 }
 
+function formatearMoneda(monto) {
+    if (monto == null) return '';
+    return `${Number(monto).toLocaleString('es-BO', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })} Bs.`;
+}
+
 function puedeGestionarPago(ficha) {
     return ficha.estado === 'PENDIENTE_PAGO' && !estaEsperandoConfirmacionPago(ficha);
+}
+
+function puedePagarSaldo(ficha) {
+    return ficha.estado === 'ANTICIPO_PAGADO'
+        && Number(ficha.saldo_pendiente) > 0
+        && !estaEsperandoConfirmacionPago(ficha);
+}
+
+function mostrarResumenPago(ficha) {
+    if (ficha.estado === 'CANCELADA') {
+        return false;
+    }
+
+    return Number(ficha.total_pagado) > 0 || Number(ficha.saldo_pendiente) > 0;
+}
+
+function abrirDetalle(ficha) {
+    fichaDetalle.value = ficha;
+    modalDetalle.value = true;
+}
+
+function cerrarDetalle() {
+    modalDetalle.value = false;
+    fichaDetalle.value = null;
 }
 
 function cancelarFicha(fichaId) {
     if (!confirm('¿Estás seguro de cancelar esta ficha? El horario quedará disponible para otros pacientes.')) {
         return;
     }
+
+    cerrarDetalle();
 
     router.post(route('cliente.fichas.cancelar', fichaId), {}, {
         preserveScroll: true,
@@ -106,10 +154,20 @@ function cancelarFicha(fichaId) {
                     <div
                         v-for="ficha in fichas.data"
                         :key="ficha.id"
-                        class="bg-white rounded-lg shadow-md hover:shadow-xl transition overflow-hidden flex flex-col"
+                        class="bg-white rounded-lg shadow-md transition overflow-hidden flex flex-col"
                     >
-                        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-4">
-                            <h3 class="text-lg font-bold text-white">{{ ficha.servicio?.nombre || 'Sin servicio' }}</h3>
+                        <div
+                            class="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 cursor-pointer select-none transition hover:brightness-110"
+                            role="button"
+                            tabindex="0"
+                            title="Ver detalle de la ficha"
+                            @click="abrirDetalle(ficha)"
+                            @keydown.enter="abrirDetalle(ficha)"
+                        >
+                            <div class="flex items-start justify-between gap-2">
+                                <h3 class="text-lg font-bold text-white">{{ ficha.servicio?.nombre || 'Sin servicio' }}</h3>
+                                <span class="text-xs text-indigo-200 shrink-0">Ver detalle</span>
+                            </div>
                             <span :class="['inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold', getEstadoClass(ficha)]">
                                 {{ getEstadoTexto(ficha) }}
                             </span>
@@ -135,7 +193,39 @@ function cancelarFicha(fichaId) {
                                     <span class="text-gray-500 text-sm">Motivo:</span>
                                     <p class="text-gray-800 text-sm mt-1">{{ ficha.motivo_consulta }}</p>
                                 </div>
+                                <div
+                                    v-if="mostrarResumenPago(ficha)"
+                                    class="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1"
+                                >
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-500">Total acordado:</span>
+                                        <span class="font-semibold text-gray-800">{{ formatearMoneda(ficha.costo_total) }}</span>
+                                    </div>
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-500">Pagado:</span>
+                                        <span class="font-semibold text-emerald-700">{{ formatearMoneda(ficha.total_pagado) }}</span>
+                                    </div>
+                                    <div
+                                        v-if="Number(ficha.saldo_pendiente) > 0"
+                                        class="flex justify-between text-sm"
+                                    >
+                                        <span class="text-gray-500">Saldo pendiente:</span>
+                                        <span class="font-semibold text-amber-700">{{ formatearMoneda(ficha.saldo_pendiente) }}</span>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+
+                        <div
+                            v-if="puedePagarSaldo(ficha)"
+                            class="px-6 pb-6 pt-0"
+                        >
+                            <Link
+                                :href="route('cliente.pagos.procesar', ficha.id)"
+                                class="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+                            >
+                                Pagar saldo
+                            </Link>
                         </div>
 
                         <div
@@ -169,7 +259,6 @@ function cancelarFicha(fichaId) {
                     </Link>
                 </div>
 
-                <!-- Paginación -->
                 <div v-if="fichas.links && fichas.links.length > 3" class="mt-6 flex justify-center">
                     <div class="flex space-x-2">
                         <Link
@@ -183,5 +272,12 @@ function cancelarFicha(fichaId) {
                 </div>
             </div>
         </div>
+
+        <DetalleFichaClienteModal
+            :show="modalDetalle"
+            :ficha="fichaDetalle"
+            @close="cerrarDetalle"
+            @cancelar-ficha="cancelarFicha"
+        />
     </AppLayout>
 </template>

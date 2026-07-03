@@ -155,48 +155,102 @@ class Ficha extends Model
     /**
      * Métodos de control de pagos
      */
-    public function calcularTotalPagado()
+    public function calcularTotalPagado(): float
     {
-        return $this->pagos()->where('estado', 'PAGADO')->sum('monto');
+        return round((float) $this->pagos()->where('estado', 'PAGADO')->sum('monto'), 2);
     }
 
-    public function calcularSaldoPendiente()
+    /**
+     * Monto total acordado para la ficha (catálogo o total con descuento).
+     */
+    public function obtenerCostoNetoAcordado(): float
+    {
+        $costoCatalogo = round((float) ($this->servicio->costo ?? 0), 2);
+
+        $pagoTotalPagado = (float) $this->pagos()
+            ->where('estado', 'PAGADO')
+            ->where('concepto', 'TOTAL')
+            ->sum('monto');
+
+        if ($pagoTotalPagado > 0) {
+            return round($pagoTotalPagado, 2);
+        }
+
+        $pagoTotalPendiente = $this->pagos()
+            ->where('estado', 'PENDIENTE')
+            ->where('concepto', 'TOTAL')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if ($pagoTotalPendiente) {
+            return round((float) $pagoTotalPendiente->monto, 2);
+        }
+
+        return $costoCatalogo;
+    }
+
+    public function calcularSaldoPendiente(): float
     {
         $totalPagado = $this->calcularTotalPagado();
-        $costoServicio = $this->servicio->costo ?? 0;
-        return max(0, $costoServicio - $totalPagado);
+        $costoNeto = $this->obtenerCostoNetoAcordado();
+
+        return max(0, round($costoNeto - $totalPagado, 2));
     }
 
-    public function calcularPorcentajePagado()
+    public function calcularPorcentajePagado(): float
     {
-        $costoServicio = $this->servicio->costo ?? 0;
-        if ($costoServicio <= 0) return 0;
-        
+        $costoNeto = $this->obtenerCostoNetoAcordado();
+        if ($costoNeto <= 0) {
+            return 0;
+        }
+
         $totalPagado = $this->calcularTotalPagado();
-        return ($totalPagado / $costoServicio) * 100;
+
+        return min(100, round(($totalPagado / $costoNeto) * 100, 2));
     }
 
-    public function tienePagoAnticipo()
+    public function tienePagoAnticipo(): bool
     {
         return $this->pagos()->where('concepto', 'ANTICIPO')->where('estado', 'PAGADO')->exists();
     }
 
-    public function estaPagadaCompleta()
+    public function estaPagadaCompleta(): bool
     {
-        return $this->calcularSaldoPendiente() <= 0;
+        return $this->calcularSaldoPendiente() <= 0.01;
     }
 
-    public function actualizarEstadoPorPago()
+    /**
+     * Estados que puede recalcular la lógica de pagos.
+     */
+    public static function estadosGestionadosPorPago(): array
     {
-        $porcentajePagado = $this->calcularPorcentajePagado();
-        
-        if ($porcentajePagado >= 100) {
-            $this->update(['estado' => 'PAGADA_COMPLETA']);
-        } elseif ($porcentajePagado > 0) {
-            $this->update(['estado' => 'ANTICIPO_PAGADO']);
-        } else {
-            $this->update(['estado' => 'PENDIENTE_PAGO']);
+        return ['PENDIENTE_PAGO', 'ANTICIPO_PAGADO', 'PAGADA_COMPLETA'];
+    }
+
+    public function actualizarEstadoPorPago(): void
+    {
+        if (! in_array($this->estado, self::estadosGestionadosPorPago(), true)) {
+            return;
         }
+
+        $totalPagado = $this->calcularTotalPagado();
+
+        if ($totalPagado <= 0) {
+            $this->update(['estado' => 'PENDIENTE_PAGO']);
+            return;
+        }
+
+        if ($this->pagos()->where('estado', 'PAGADO')->where('concepto', 'TOTAL')->exists()) {
+            $this->update(['estado' => 'PAGADA_COMPLETA']);
+            return;
+        }
+
+        if ($this->calcularSaldoPendiente() <= 0.01) {
+            $this->update(['estado' => 'PAGADA_COMPLETA']);
+            return;
+        }
+
+        $this->update(['estado' => 'ANTICIPO_PAGADO']);
     }
 
     /**

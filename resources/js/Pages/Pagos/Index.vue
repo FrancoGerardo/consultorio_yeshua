@@ -9,9 +9,9 @@
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="bg-white shadow-md rounded-lg p-6">
-                    <h3 class="text-2xl font-bold text-gray-800 mb-6">📋 Historial de Pagos</h3>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-2">📋 Historial de Pagos</h3>
+                    <p class="text-sm text-gray-500 mb-6">Haz clic en una fila para ver el detalle del pago y de la cita.</p>
 
-                    <!-- Tabla de Pagos -->
                     <div v-if="pagos.data && pagos.data.length > 0" class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -25,7 +25,13 @@
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="pago in pagos.data" :key="pago.id" class="hover:bg-gray-50">
+                                <tr
+                                    v-for="pago in pagos.data"
+                                    :key="pago.id"
+                                    class="hover:bg-indigo-50 cursor-pointer transition"
+                                    title="Ver detalle"
+                                    @click="abrirDetalle(pago)"
+                                >
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         {{ formatearFecha(pago.fecha_pago) }}
                                     </td>
@@ -33,13 +39,15 @@
                                         {{ pago.ficha?.servicio?.nombre || 'N/A' }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-3 py-1 rounded-full text-xs font-semibold"
-                                              :class="{
-                                                  'bg-green-100 text-green-800': pago.concepto === 'TOTAL',
-                                                  'bg-blue-100 text-blue-800': pago.concepto === 'ANTICIPO',
-                                                  'bg-purple-100 text-purple-800': pago.concepto === 'SALDO',
-                                                  'bg-orange-100 text-orange-800': pago.concepto === 'CUOTA',
-                                              }">
+                                        <span
+                                            class="px-3 py-1 rounded-full text-xs font-semibold"
+                                            :class="{
+                                                'bg-green-100 text-green-800': pago.concepto === 'TOTAL',
+                                                'bg-blue-100 text-blue-800': pago.concepto === 'ANTICIPO',
+                                                'bg-purple-100 text-purple-800': pago.concepto === 'SALDO',
+                                                'bg-orange-100 text-orange-800': pago.concepto === 'CUOTA',
+                                            }"
+                                        >
                                             {{ pago.concepto }}
                                         </span>
                                     </td>
@@ -56,12 +64,14 @@
                                         Bs. {{ parseFloat(pago.monto).toFixed(2) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-3 py-1 rounded-full text-xs font-semibold"
-                                              :class="{
-                                                  'bg-green-100 text-green-800': pago.estado === 'PAGADO',
-                                                  'bg-yellow-100 text-yellow-800': pago.estado === 'PENDIENTE',
-                                                  'bg-red-100 text-red-800': pago.estado === 'ANULADO',
-                                              }">
+                                        <span
+                                            class="px-3 py-1 rounded-full text-xs font-semibold"
+                                            :class="{
+                                                'bg-green-100 text-green-800': pago.estado === 'PAGADO',
+                                                'bg-yellow-100 text-yellow-800': pago.estado === 'PENDIENTE',
+                                                'bg-red-100 text-red-800': pago.estado === 'ANULADO',
+                                            }"
+                                        >
                                             {{ pago.estado }}
                                         </span>
                                     </td>
@@ -69,39 +79,40 @@
                             </tbody>
                         </table>
 
-                        <!-- Paginación -->
                         <div class="mt-6 flex justify-between items-center">
                             <div class="text-sm text-gray-600">
                                 Mostrando {{ pagos.from }} a {{ pagos.to }} de {{ pagos.total }} pagos
                             </div>
                             <div class="flex space-x-2">
-                                <button v-for="link in pagos.links" :key="link.label"
-                                        @click="link.url ? $inertia.visit(link.url) : null"
-                                        :disabled="!link.url"
-                                        v-html="link.label"
-                                        :class="{
-                                            'bg-blue-600 text-white': link.active,
-                                            'bg-gray-200 text-gray-800': !link.active && link.url,
-                                            'bg-gray-100 text-gray-400 cursor-not-allowed': !link.url,
-                                        }"
-                                        class="px-4 py-2 rounded-lg transition">
-                                </button>
+                                <button
+                                    v-for="link in pagos.links"
+                                    :key="link.label"
+                                    :disabled="!link.url"
+                                    v-html="link.label"
+                                    :class="{
+                                        'bg-blue-600 text-white': link.active,
+                                        'bg-gray-200 text-gray-800': !link.active && link.url,
+                                        'bg-gray-100 text-gray-400 cursor-not-allowed': !link.url,
+                                    }"
+                                    class="px-4 py-2 rounded-lg transition"
+                                    @click="link.url ? $inertia.visit(link.url) : null"
+                                ></button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Mensaje si no hay pagos -->
                     <div v-else class="text-center py-12">
                         <div class="text-6xl mb-4">💳</div>
                         <h3 class="text-xl font-semibold text-gray-700 mb-2">No tienes pagos registrados</h3>
                         <p class="text-gray-600 mb-6">Tus pagos aparecerán aquí una vez que realices tu primera transacción.</p>
-                        <button @click="$inertia.visit(route('cliente.fichas.index'))"
-                                class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                        <button
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                            @click="$inertia.visit(route('cliente.fichas.index'))"
+                        >
                             Ver Mis Fichas
                         </button>
                     </div>
 
-                    <!-- Resumen Estadístico -->
                     <div v-if="pagos.data && pagos.data.length > 0" class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="bg-green-50 rounded-lg p-4">
                             <p class="text-sm text-gray-600">Total Pagado</p>
@@ -120,25 +131,38 @@
                     </div>
                 </div>
 
-                <!-- Botón Volver -->
                 <div class="mt-6 text-center">
-                    <button @click="$inertia.visit(route('dashboard'))"
-                            class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                    <button
+                        class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
+                        @click="$inertia.visit(route('dashboard'))"
+                    >
                         ← Volver al Dashboard
                     </button>
                 </div>
             </div>
         </div>
+
+        <DetalleFichaClienteModal
+            :show="modalDetalle"
+            :ficha="fichaDetalle"
+            :pago-destacado="pagoDetalle"
+            @close="cerrarDetalle"
+        />
     </AppLayout>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DetalleFichaClienteModal from '@/Components/DetalleFichaClienteModal.vue';
 
 const props = defineProps({
     pagos: Object,
 });
+
+const modalDetalle = ref(false);
+const pagoDetalle = ref(null);
+const fichaDetalle = ref(null);
 
 const formatearFecha = (fecha) => {
     if (!fecha) return 'N/A';
@@ -158,5 +182,16 @@ const calcularTotalPagado = () => {
         .reduce((sum, pago) => sum + parseFloat(pago.monto), 0);
     return total.toFixed(2);
 };
-</script>
 
+function abrirDetalle(pago) {
+    pagoDetalle.value = pago;
+    fichaDetalle.value = pago.ficha || null;
+    modalDetalle.value = true;
+}
+
+function cerrarDetalle() {
+    modalDetalle.value = false;
+    pagoDetalle.value = null;
+    fichaDetalle.value = null;
+}
+</script>
